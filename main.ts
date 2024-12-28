@@ -1,145 +1,168 @@
 import { Plugin } from 'obsidian';
+import { EditorView } from '@codemirror/view';
 
 export default class ImgurPreviewPlugin extends Plugin {
-	private activeTooltip: HTMLElement | null = null;
+    private tooltip: HTMLElement;
+    private currentTooltipLink: string | null = null;
+    private hoverTimeout: NodeJS.Timeout | null = null;
 
-	async onload() {
-		console.log('Imgur Preview Plugin: Loading plugin');
-		
-		// Add styles to document
-		this.addStyles();
-		console.log('Imgur Preview Plugin: Styles registered');
+    async onload() {
+        console.log('Loading Imgur Preview plugin');
 
-		// Register the hover preview handler for underlined links
-		this.registerDomEvent(document, 'mouseover', (evt: MouseEvent) => {
-			const target = evt.target as HTMLElement;
-			
-			// Only proceed if the target has the cm-underline class
-			if (!target.classList.contains('cm-underline')) {
-				return;
-			}
-			
-			console.log('Imgur Preview Plugin: Hover event detected on underlined link');
-			
-			try {
-				// Create tooltip container
-				const tooltip = document.createElement('div');
-				tooltip.classList.add('imgur-preview-tooltip');
-				tooltip.style.pointerEvents = 'none';
-				
-				// Create and load the image
-				const img = document.createElement('img');
-				img.style.maxWidth = '400px';
-				img.style.maxHeight = '300px';
-				img.style.objectFit = 'contain';
-				
-				// Handle image load events
-				img.onload = () => {
-					console.log('Imgur Preview Plugin: Image loaded successfully');
-					tooltip.classList.remove('loading');
-				};
-				
-				img.onerror = (e) => {
-					console.error('Imgur Preview Plugin: Failed to load image:', e);
-					tooltip.classList.add('error');
-					img.remove();
-					tooltip.textContent = 'Failed to load image';
-				};
-				
-				tooltip.classList.add('loading');
-				img.src = 'https://i.imgur.com/EDx8Olk.png';
-				tooltip.appendChild(img);
-						
-				// Position the tooltip
-				const rect = target.getBoundingClientRect();
-				tooltip.style.position = 'fixed';
-				tooltip.style.left = `${rect.left}px`;
-				tooltip.style.top = `${rect.bottom + 5}px`;
-				tooltip.style.zIndex = '1000';
-				
-				// Remove any existing tooltip
-				if (this.activeTooltip) {
-					this.activeTooltip.remove();
-				}
-				
-				document.body.appendChild(tooltip);
-				console.log('Imgur Preview Plugin: Tooltip added to document');
-				
-				this.activeTooltip = tooltip;
+        // Create tooltip element
+        this.tooltip = document.createElement('div');
+        this.tooltip.addClass('imgur-preview-tooltip');
+        document.body.appendChild(this.tooltip);
 
-				// Remove tooltip when mouse leaves the element
-				const removeTooltip = () => {
-					console.log('Imgur Preview Plugin: Removing tooltip');
-					if (this.activeTooltip === tooltip) {
-						this.activeTooltip = null;
-					}
-					tooltip.remove();
-					target.removeEventListener('mouseout', removeTooltip);
-				};
-				
-				target.addEventListener('mouseout', removeTooltip);
-			} catch (error) {
-				console.error('Imgur Preview Plugin: Error creating tooltip:', error);
-			}
-		});
-	}
+        // Register event handler for editor changes
+        this.registerEditorExtension([
+            EditorView.domEventHandlers({
+                mouseover: this.handleMouseOver.bind(this),
+                mouseout: this.handleMouseOut.bind(this)
+            })
+        ]);
+    }
 
-	private addStyles(): void {
-		// Add the styles to the document
-		const css = `
-			.imgur-preview-tooltip {
-				background-color: var(--background-primary);
-				border: 1px solid var(--background-modifier-border);
-				border-radius: 6px;
-				padding: 8px;
-				box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-				animation: fade-in 0.15s ease-in-out;
-			}
+    onunload() {
+        console.log('Unloading Imgur Preview plugin');
+        this.tooltip?.remove();
+    }
 
-			.imgur-preview-tooltip.loading::before {
-				content: "Loading...";
-				display: block;
-				text-align: center;
-				padding: 20px;
-				color: var(--text-muted);
-			}
+    private async handleMouseOver(event: MouseEvent, view: EditorView) {
+        const target = event.target as HTMLElement;
+        
+        // Clear any existing hover timeout
+        if (this.hoverTimeout) {
+            clearTimeout(this.hoverTimeout);
+            this.hoverTimeout = null;
+        }
 
-			.imgur-preview-tooltip.error {
-				color: var(--text-error);
-				padding: 12px;
-			}
+        // Get the position in the editor where the mouse is
+        const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+        if (pos === null) return;
 
-			.imgur-preview-tooltip img {
-				display: block;
-				border-radius: 4px;
-				background-color: var(--background-secondary);
-			}
+        // Get the line of text at this position
+        const line = view.state.doc.lineAt(pos);
+        const lineText = line.text;
 
-			@keyframes fade-in {
-				from {
-					opacity: 0;
-					transform: translateY(4px);
-				}
-				to {
-					opacity: 1;
-					transform: translateY(0);
-				}
-			}
-		`;
-		
-		const styleEl = document.createElement('style');
-		styleEl.innerHTML = css;
-		document.head.appendChild(styleEl);
-		
-		this.register(() => styleEl.remove());
-	}
+        console.log('Hover detected at position:', pos);
+        console.log('Line text:', lineText);
 
-	onunload() {
-		// Clean up any remaining tooltips
-		if (this.activeTooltip) {
-			this.activeTooltip.remove();
-			this.activeTooltip = null;
-		}
-		document.querySelectorAll('.imgur-preview-tooltip').forEach(el => el.remove());
-	}
+        // Parse markdown links in the current line
+        const linkRegex = /\[([^\]]+)\]\((https?:\/\/(?:i\.)?imgur\.com\/[^\)]+)\)/g;
+        let match: RegExpExecArray | null;
+        let foundLink: string | null = null;
+
+        while ((match = linkRegex.exec(lineText)) !== null) {
+            const [fullMatch, linkText, url] = match;
+            const linkStart = match.index;
+            const linkEnd = linkStart + fullMatch.length;
+
+            // Check if the cursor is within this link
+            if (pos >= line.from + linkStart && pos <= line.from + linkEnd) {
+                foundLink = url;
+                console.log('Found Imgur link:', url);
+                break;
+            }
+        }
+
+        if (foundLink && foundLink !== this.currentTooltipLink) {
+            // Add a small delay before showing the tooltip
+            this.hoverTimeout = setTimeout(() => {
+                this.showTooltip(foundLink!, event.clientX, event.clientY);
+            }, 300);
+        }
+    }
+
+    private handleMouseOut() {
+        if (this.hoverTimeout) {
+            clearTimeout(this.hoverTimeout);
+            this.hoverTimeout = null;
+        }
+        this.hideTooltip();
+    }
+
+    private async showTooltip(url: string, x: number, y: number) {
+        console.log('Showing tooltip for URL:', url);
+        
+        // Convert gallery URLs to direct image URLs if needed
+        const imageUrl = this.convertToDirectImageUrl(url);
+        console.log('Converted to direct image URL:', imageUrl);
+
+        this.currentTooltipLink = url;
+        
+        // Show loading state
+        this.tooltip.empty();
+        this.tooltip.addClass('loading');
+        this.tooltip.setText('Loading...');
+        
+        // Position the tooltip
+        this.tooltip.style.display = 'block';
+        this.tooltip.style.left = `${x + 10}px`;
+        this.tooltip.style.top = `${y + 10}px`;
+
+        try {
+            // Create and load the image
+            const img = document.createElement('img');
+            
+            // Create a promise that resolves when the image loads or rejects on error
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = () => reject(new Error('Failed to load image'));
+                img.src = imageUrl;
+            });
+
+            // Image loaded successfully
+            this.tooltip.removeClass('loading');
+            this.tooltip.removeClass('error');
+            this.tooltip.empty();
+            this.tooltip.appendChild(img);
+            
+            // Adjust tooltip position if it goes off-screen
+            const tooltipRect = this.tooltip.getBoundingClientRect();
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            
+            if (tooltipRect.right > viewportWidth) {
+                this.tooltip.style.left = `${viewportWidth - tooltipRect.width - 10}px`;
+            }
+            if (tooltipRect.bottom > viewportHeight) {
+                this.tooltip.style.top = `${viewportHeight - tooltipRect.height - 10}px`;
+            }
+
+        } catch (error) {
+            console.error('Error loading image:', error);
+            this.tooltip.removeClass('loading');
+            this.tooltip.addClass('error');
+            this.tooltip.setText('Failed to load image');
+        }
+    }
+
+    private hideTooltip() {
+        console.log('Hiding tooltip');
+        this.tooltip.style.display = 'none';
+        this.currentTooltipLink = null;
+    }
+
+    private convertToDirectImageUrl(url: string): string {
+        // Convert various Imgur URL formats to direct image URLs
+        const urlObj = new URL(url);
+        const path = urlObj.pathname;
+
+        // Remove /gallery/ from the path if present
+        const cleanPath = path.replace(/^\/gallery\//, '/');
+        
+        // If the URL doesn't end in an image extension, append .jpg
+        if (!/\.(jpg|jpeg|png|gif)$/i.test(cleanPath)) {
+            return `https://i.imgur.com${cleanPath}.jpg`;
+        }
+
+        // If it's already a direct image URL, return as is
+        if (urlObj.hostname === 'i.imgur.com') {
+            return url;
+        }
+
+        // Convert to i.imgur.com URL
+        return `https://i.imgur.com${cleanPath}`;
+    }
 }

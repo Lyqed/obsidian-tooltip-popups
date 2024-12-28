@@ -3,7 +3,7 @@
 	"name": "Imgur Preview",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Shows image previews when hovering over Imgur links",
-	"author": "Cline",
+	"description": "Shows image previews when hovering over Imgur links in editing mode",
+	"author": "lyqed",
 	"isDesktopOnly": false
 }
