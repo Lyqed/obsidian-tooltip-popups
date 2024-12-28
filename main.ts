@@ -10,11 +10,17 @@ export default class ImgurPreviewPlugin extends Plugin {
 		this.addStyles();
 		console.log('Imgur Preview Plugin: Styles registered');
 
-		// Register the hover preview handler for ANY element
+		// Register the hover preview handler for underlined links
 		this.registerDomEvent(document, 'mouseover', (evt: MouseEvent) => {
 			const target = evt.target as HTMLElement;
-			console.log('Imgur Preview Plugin: Hover event detected on:', target.tagName);
-				
+			
+			// Only proceed if the target has the cm-underline class
+			if (!target.classList.contains('cm-underline')) {
+				return;
+			}
+			
+			console.log('Imgur Preview Plugin: Hover event detected on underlined link');
+			
 			try {
 				// Create tooltip container
 				const tooltip = document.createElement('div');
