@@ -8,6 +8,12 @@ export class TooltipManager {
     private maxWidth: number;
     private maxHeight: number;
     private wheelListener: (e: WheelEvent) => void;
+    private isDragging = false;
+    private dragStartX = 0;
+    private dragStartY = 0;
+    private tooltipStartX = 0;
+    private tooltipStartY = 0;
+    private isPositionLocked = false;
 
     constructor(maxWidth: number, maxHeight: number) {
         this.maxWidth = maxWidth;
@@ -28,29 +34,74 @@ export class TooltipManager {
         this.tooltipElement.style.borderRadius = '5px';
         this.tooltipElement.style.padding = '5px';
         this.tooltipElement.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+        this.tooltipElement.style.cursor = 'grab';
     }
 
     private setupTooltipEventListeners() {
         this.tooltipElement.addEventListener('mouseenter', () => {
             this.isMouseOverTooltip = true;
-            // Add a timeout to hide the tooltip even when hovering
-            setTimeout(() => {
-                this.hideTooltip();
-            }, 3000); // Hide after 3 seconds
+            if (!this.isPositionLocked) {
+                // Add a timeout to hide the tooltip even when hovering
+                setTimeout(() => {
+                    if (!this.isPositionLocked) {
+                        this.hideTooltip();
+                    }
+                }, 3000); // Hide after 3 seconds
+            }
         });
 
         this.tooltipElement.addEventListener('mouseleave', () => {
             this.isMouseOverTooltip = false;
-            this.hideTooltip();
+            if (!this.isPositionLocked) {
+                this.hideTooltip();
+            }
         });
 
         // Hide tooltip on scroll unless it's a zoom action
         this.wheelListener = (e: WheelEvent) => {
-            if (!e.ctrlKey) {
+            if (!e.ctrlKey && !this.isPositionLocked) {
                 this.hideTooltip();
             }
         };
         document.addEventListener('wheel', this.wheelListener);
+
+        // Drag functionality
+        this.tooltipElement.addEventListener('mousedown', (e: MouseEvent) => {
+            e.preventDefault(); // Override default behaviors
+            e.stopPropagation(); // Prevent event from bubbling to Obsidian
+            this.isDragging = true;
+            this.dragStartX = e.clientX;
+            this.dragStartY = e.clientY;
+            const rect = this.tooltipElement.getBoundingClientRect();
+            this.tooltipStartX = rect.left;
+            this.tooltipStartY = rect.top;
+            this.tooltipElement.style.cursor = 'grabbing';
+        });
+
+        document.addEventListener('mousemove', (e: MouseEvent) => {
+            if (this.isDragging) {
+                const deltaX = e.clientX - this.dragStartX;
+                const deltaY = e.clientY - this.dragStartY;
+                this.tooltipElement.style.left = `${this.tooltipStartX + deltaX}px`;
+                this.tooltipElement.style.top = `${this.tooltipStartY + deltaY}px`;
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (this.isDragging) {
+                this.isDragging = false;
+                this.isPositionLocked = true;
+                this.tooltipElement.style.cursor = 'grab';
+            }
+        });
+
+        // Double click to reset position lock
+        this.tooltipElement.addEventListener('dblclick', (e: MouseEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.isPositionLocked = false;
+            this.hideTooltip();
+        });
     }
 
     showTooltip(imgurLink: string, coords: { x: number; y: number }) {
@@ -76,6 +127,7 @@ export class TooltipManager {
         img.style.transform = `scale(${this.currentScale})`;
         img.style.transformOrigin = 'top left';
         img.style.transition = 'transform 0.1s ease-out';
+        img.style.pointerEvents = 'none'; // Prevent image from interfering with drag
 
         // Modify imgur link to get direct image if needed
         const directImageLink = this.getDirectImageLink(imgurLink);
@@ -124,10 +176,12 @@ export class TooltipManager {
     }
 
     hideTooltip() {
-        this.tooltipElement.style.display = 'none';
-        this.currentTooltipLink = null;
-        this.lastLinkRect = null;
-        this.tooltipPosition = null;
+        if (!this.isPositionLocked) {
+            this.tooltipElement.style.display = 'none';
+            this.currentTooltipLink = null;
+            this.lastLinkRect = null;
+            this.tooltipPosition = null;
+        }
     }
 
     handleZoom(deltaY: number) {
