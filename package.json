@@ -1,0 +1,54 @@
+{
+
+	"name": "obsidian-imgur-preview",
+
+	"version": "1.0.0",
+
+	"description": "Shows image previews when hovering over Imgur links in Obsidian",
+
+	"main": "main.js",
+
+	"scripts": {
+
+		"dev": "node esbuild.config.mjs",
+
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+
+		"version": "node version-bump.mjs && git add manifest.json versions.json"
+
+	},
+
+	"keywords": [
+
+		"obsidian",
+
+		"plugin",
+
+		"imgur",
+
+		"preview"
+
+	],
+
+	"author": "",
+
+	"license": "MIT",
+
+	"devDependencies": {
+
+		"@types/node": "^16.18.122",
+
+		"builtin-modules": "^4.0.0",
+
+		"esbuild": "^0.19.12",
+
+		"obsidian": "^1.7.2",
+
+		"tslib": "^2.8.1",
+
+		"typescript": "^5.7.2"
+
+	}
+
+}
+

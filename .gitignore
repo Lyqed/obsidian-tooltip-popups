@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Build files
+main.js
+*.js.map
+data.json
+
+# IDE
+.idea
+.vscode
+
+# OS
+.DS_Store
+desktop.ini
