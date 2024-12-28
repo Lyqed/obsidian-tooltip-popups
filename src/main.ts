@@ -182,37 +182,98 @@ export default class ImgurPreviewPlugin extends Plugin {
         tooltipRect: DOMRect,
         position: 'above' | 'below' | 'left' | 'right'
     ): boolean {
-        const GRACE_AREA = 50; // pixels of grace area
+        const GRACE_AREA_TOWARDS = 100; // Larger grace area when moving towards tooltip
+        const GRACE_AREA_SIDE = 30;    // Smaller grace area for side movements
+        const GRACE_AREA_AWAY = 10;    // Very small grace area when moving away
+
+        // Calculate the center points
+        const linkCenterX = linkRect.left + linkRect.width / 2;
+        const linkCenterY = linkRect.top + linkRect.height / 2;
+        const tooltipCenterX = tooltipRect.left + tooltipRect.width / 2;
+        const tooltipCenterY = tooltipRect.top + tooltipRect.height / 2;
 
         switch (position) {
-            case 'below':
-                // If tooltip is below, only give grace when mouse is moving downward
-                return mouseY > linkRect.bottom && 
-                       mouseY < tooltipRect.top + GRACE_AREA &&
-                       mouseX > Math.min(linkRect.left, tooltipRect.left) - GRACE_AREA &&
-                       mouseX < Math.max(linkRect.right, tooltipRect.right) + GRACE_AREA;
+            case 'below': {
+                // Mouse is between link and tooltip vertically
+                const isInVerticalRange = mouseY > linkRect.bottom && mouseY < tooltipRect.top;
+                // Mouse is within horizontal bounds with side grace area
+                const isInHorizontalRange = mouseX > Math.min(linkRect.left, tooltipRect.left) - GRACE_AREA_SIDE &&
+                                          mouseX < Math.max(linkRect.right, tooltipRect.right) + GRACE_AREA_SIDE;
+                
+                if (isInVerticalRange && isInHorizontalRange) {
+                    return true;
+                }
+
+                // Mouse is near tooltip with larger grace area
+                if (mouseY >= tooltipRect.top - GRACE_AREA_TOWARDS && 
+                    mouseY <= tooltipRect.bottom + GRACE_AREA_AWAY) {
+                    return mouseX >= tooltipRect.left - GRACE_AREA_SIDE &&
+                           mouseX <= tooltipRect.right + GRACE_AREA_SIDE;
+                }
+                return false;
+            }
             
-            case 'above':
-                // If tooltip is above, only give grace when mouse is moving upward
-                return mouseY < linkRect.top &&
-                       mouseY > tooltipRect.bottom - GRACE_AREA &&
-                       mouseX > Math.min(linkRect.left, tooltipRect.left) - GRACE_AREA &&
-                       mouseX < Math.max(linkRect.right, tooltipRect.right) + GRACE_AREA;
+            case 'above': {
+                // Mouse is between link and tooltip vertically
+                const isInVerticalRange = mouseY < linkRect.top && mouseY > tooltipRect.bottom;
+                // Mouse is within horizontal bounds with side grace area
+                const isInHorizontalRange = mouseX > Math.min(linkRect.left, tooltipRect.left) - GRACE_AREA_SIDE &&
+                                          mouseX < Math.max(linkRect.right, tooltipRect.right) + GRACE_AREA_SIDE;
+                
+                if (isInVerticalRange && isInHorizontalRange) {
+                    return true;
+                }
+
+                // Mouse is near tooltip with larger grace area
+                if (mouseY <= tooltipRect.bottom + GRACE_AREA_TOWARDS && 
+                    mouseY >= tooltipRect.top - GRACE_AREA_AWAY) {
+                    return mouseX >= tooltipRect.left - GRACE_AREA_SIDE &&
+                           mouseX <= tooltipRect.right + GRACE_AREA_SIDE;
+                }
+                return false;
+            }
             
-            case 'right':
-                // If tooltip is to the right, only give grace when mouse is moving right
-                return mouseX > linkRect.right &&
-                       mouseX < tooltipRect.left + GRACE_AREA &&
-                       mouseY > Math.min(linkRect.top, tooltipRect.top) - GRACE_AREA &&
-                       mouseY < Math.max(linkRect.bottom, tooltipRect.bottom) + GRACE_AREA;
+            case 'right': {
+                // Mouse is between link and tooltip horizontally
+                const isInHorizontalRange = mouseX > linkRect.right && mouseX < tooltipRect.left;
+                // Mouse is within vertical bounds with side grace area
+                const isInVerticalRange = mouseY > Math.min(linkRect.top, tooltipRect.top) - GRACE_AREA_SIDE &&
+                                        mouseY < Math.max(linkRect.bottom, tooltipRect.bottom) + GRACE_AREA_SIDE;
+                
+                if (isInHorizontalRange && isInVerticalRange) {
+                    return true;
+                }
+
+                // Mouse is near tooltip with larger grace area
+                if (mouseX >= tooltipRect.left - GRACE_AREA_TOWARDS && 
+                    mouseX <= tooltipRect.right + GRACE_AREA_AWAY) {
+                    return mouseY >= tooltipRect.top - GRACE_AREA_SIDE &&
+                           mouseY <= tooltipRect.bottom + GRACE_AREA_SIDE;
+                }
+                return false;
+            }
             
-            case 'left':
-                // If tooltip is to the left, only give grace when mouse is moving left
-                return mouseX < linkRect.left &&
-                       mouseX > tooltipRect.right - GRACE_AREA &&
-                       mouseY > Math.min(linkRect.top, tooltipRect.top) - GRACE_AREA &&
-                       mouseY < Math.max(linkRect.bottom, tooltipRect.bottom) + GRACE_AREA;
+            case 'left': {
+                // Mouse is between link and tooltip horizontally
+                const isInHorizontalRange = mouseX < linkRect.left && mouseX > tooltipRect.right;
+                // Mouse is within vertical bounds with side grace area
+                const isInVerticalRange = mouseY > Math.min(linkRect.top, tooltipRect.top) - GRACE_AREA_SIDE &&
+                                        mouseY < Math.max(linkRect.bottom, tooltipRect.bottom) + GRACE_AREA_SIDE;
+                
+                if (isInHorizontalRange && isInVerticalRange) {
+                    return true;
+                }
+
+                // Mouse is near tooltip with larger grace area
+                if (mouseX <= tooltipRect.right + GRACE_AREA_TOWARDS && 
+                    mouseX >= tooltipRect.left - GRACE_AREA_AWAY) {
+                    return mouseY >= tooltipRect.top - GRACE_AREA_SIDE &&
+                           mouseY <= tooltipRect.bottom + GRACE_AREA_SIDE;
+                }
+                return false;
+            }
         }
+        return false;
     }
 
     async loadSettings() {
