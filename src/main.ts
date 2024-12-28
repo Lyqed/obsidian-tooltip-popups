@@ -1,4 +1,4 @@
-import { Plugin } from 'obsidian';
+import { Plugin, setIcon } from 'obsidian';
 import { EditorView } from '@codemirror/view';
 import { ImgurPreviewSettings, DEFAULT_SETTINGS } from './settings/settings';
 import { ImgurPreviewSettingTab } from './settings/settingsTab';
@@ -10,11 +10,25 @@ export default class ImgurPreviewPlugin extends Plugin {
     private hoverTimeout: NodeJS.Timeout | null = null;
     settings: ImgurPreviewSettings;
     private hideTimeoutId: NodeJS.Timeout | null = null;
+    private statusBarItem: HTMLElement;
+    private currentMode: 'default' | 'custom' = 'default';
 
     async onload() {
         console.log('Loading Imgur Preview plugin');
         
         await this.loadSettings();
+
+        // Add status bar item (hidden by default)
+        this.statusBarItem = this.addStatusBarItem();
+        this.statusBarItem.addClass('mod-clickable');
+        this.updateStatusBar();
+        this.updateStatusBarVisibility();
+        this.statusBarItem.onclick = () => {
+            this.currentMode = this.currentMode === 'default' ? 'custom' : 'default';
+            this.updateStatusBar();
+            // Clear any existing tooltips when switching modes
+            this.tooltipManager.hideTooltip();
+        };
 
         // Initialize tooltip manager
         this.tooltipManager = new TooltipManager(
@@ -61,7 +75,34 @@ export default class ImgurPreviewPlugin extends Plugin {
         this.tooltipManager.destroy();
     }
 
+    updateStatusBarVisibility() {
+        if (this.settings.enableCustomMode) {
+            this.statusBarItem.style.display = 'flex';
+        } else {
+            this.statusBarItem.style.display = 'none';
+            // Reset to default mode if custom mode is disabled
+            if (this.currentMode === 'custom') {
+                this.currentMode = 'default';
+            }
+        }
+    }
+
+    private updateStatusBar() {
+        // Using image/rocket icons to represent different modes
+        const icon = this.currentMode === 'default' ? 'image' : 'rocket';
+        this.statusBarItem.empty();
+        const iconContainer = this.statusBarItem.createSpan({ cls: 'imgur-preview-status-icon' });
+        setIcon(iconContainer, icon);
+        
+        // Add tooltip to explain the modes
+        this.statusBarItem.setAttribute('aria-label', 
+            this.currentMode === 'default' ? 'Click to enter custom mode (Beta)' : 'Click to return to default mode'
+        );
+    }
+
     private async handleMouseOver(event: MouseEvent, view: EditorView) {
+        // Here we'll handle the preview based on the current mode
+        // For now, both modes work the same until custom mode is defined
         const target = event.target as HTMLElement;
         
         // Check if we're hovering over a link element
@@ -166,5 +207,6 @@ export default class ImgurPreviewPlugin extends Plugin {
             this.settings.defaultMaxWidth,
             this.settings.defaultMaxHeight
         );
+        this.updateStatusBarVisibility();
     }
 }
