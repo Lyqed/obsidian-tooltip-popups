@@ -25,11 +25,25 @@ export default class ImgurPreviewPlugin extends Plugin {
         // Add settings tab
         this.addSettingTab(new ImgurPreviewSettingTab(this.app, this));
 
-        // Add wheel event listener for zooming
+        // Add wheel event listener for zooming and scrolling
         this.registerDomEvent(document, 'wheel', (e: WheelEvent) => {
-            if (this.tooltipManager.getCurrentTooltipLink() && e.ctrlKey) {
+            if (!this.tooltipManager.getCurrentTooltipLink()) return;
+            
+            if (e.ctrlKey) {
+                // Only prevent default for zooming
                 e.preventDefault();
                 this.tooltipManager.handleZoom(e.deltaY);
+            } else {
+                // Allow regular scrolling but hide tooltip
+                this.tooltipManager.hideTooltip();
+                if (this.hoverTimeout) {
+                    clearTimeout(this.hoverTimeout);
+                    this.hoverTimeout = null;
+                }
+                if (this.hideTimeoutId) {
+                    clearTimeout(this.hideTimeoutId);
+                    this.hideTimeoutId = null;
+                }
             }
         });
 
