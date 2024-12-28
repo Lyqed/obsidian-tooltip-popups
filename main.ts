@@ -17,6 +17,10 @@ export default class ImgurPreviewPlugin extends Plugin {
     private hoverTimeout: NodeJS.Timeout | null = null;
     settings: ImgurPreviewSettings;
     private currentZoomLevel: number = 1;
+    private isMouseOverTooltip: boolean = false;
+    private lastLinkRect: DOMRect | null = null;
+    private tooltipPosition: 'above' | 'below' | 'left' | 'right' | null = null;
+    private hideTimeoutId: NodeJS.Timeout | null = null;
 
     async onload() {
         console.log('Loading Imgur Preview plugin');
@@ -26,6 +30,19 @@ export default class ImgurPreviewPlugin extends Plugin {
         // Create tooltip element
         this.tooltip = document.createElement('div');
         this.tooltip.addClass('imgur-preview-tooltip');
+        
+        // Add mouse enter/leave handlers for the tooltip
+        this.tooltip.addEventListener('mouseenter', () => {
+            console.log('Mouse entered tooltip');
+            this.isMouseOverTooltip = true;
+        });
+        
+        this.tooltip.addEventListener('mouseleave', () => {
+            console.log('Mouse left tooltip');
+            this.isMouseOverTooltip = false;
+            this.hideTooltip();
+        });
+        
         document.body.appendChild(this.tooltip);
 
         // Add settings tab
@@ -111,12 +128,84 @@ export default class ImgurPreviewPlugin extends Plugin {
         }
     }
 
-    private handleMouseOut() {
+    private handleMouseOut(event: MouseEvent) {
         if (this.hoverTimeout) {
             clearTimeout(this.hoverTimeout);
             this.hoverTimeout = null;
         }
-        this.hideTooltip();
+
+        // If we don't have position info, fall back to immediate hide
+        if (!this.lastLinkRect || !this.tooltipPosition) {
+            this.hideTooltip();
+            return;
+        }
+
+        const mouseX = event.clientX;
+        const mouseY = event.clientY;
+        const linkRect = this.lastLinkRect;
+        const tooltipRect = this.tooltip.getBoundingClientRect();
+        
+        // Calculate if mouse is moving towards tooltip
+        const isMovingTowardsTooltip = this.isMouseMovingTowardsTooltip(
+            mouseX, mouseY, linkRect, tooltipRect, this.tooltipPosition
+        );
+
+        if (isMovingTowardsTooltip) {
+            // Clear any existing hide timeout
+            if (this.hideTimeoutId) {
+                clearTimeout(this.hideTimeoutId);
+            }
+            
+            // Give user time to reach tooltip
+            this.hideTimeoutId = setTimeout(() => {
+                if (!this.isMouseOverTooltip) {
+                    this.hideTooltip();
+                }
+            }, 300);
+        } else {
+            // Hide immediately if moving away from tooltip
+            this.hideTooltip();
+        }
+    }
+
+    private isMouseMovingTowardsTooltip(
+        mouseX: number,
+        mouseY: number,
+        linkRect: DOMRect,
+        tooltipRect: DOMRect,
+        position: 'above' | 'below' | 'left' | 'right'
+    ): boolean {
+        const GRACE_AREA = 50; // pixels of grace area
+
+        switch (position) {
+            case 'below':
+                // If tooltip is below, only give grace when mouse is moving downward
+                return mouseY > linkRect.bottom && 
+                       mouseY < tooltipRect.top + GRACE_AREA &&
+                       mouseX > Math.min(linkRect.left, tooltipRect.left) - GRACE_AREA &&
+                       mouseX < Math.max(linkRect.right, tooltipRect.right) + GRACE_AREA;
+            
+            case 'above':
+                // If tooltip is above, only give grace when mouse is moving upward
+                return mouseY < linkRect.top &&
+                       mouseY > tooltipRect.bottom - GRACE_AREA &&
+                       mouseX > Math.min(linkRect.left, tooltipRect.left) - GRACE_AREA &&
+                       mouseX < Math.max(linkRect.right, tooltipRect.right) + GRACE_AREA;
+            
+            case 'right':
+                // If tooltip is to the right, only give grace when mouse is moving right
+                return mouseX > linkRect.right &&
+                       mouseX < tooltipRect.left + GRACE_AREA &&
+                       mouseY > Math.min(linkRect.top, tooltipRect.top) - GRACE_AREA &&
+                       mouseY < Math.max(linkRect.bottom, tooltipRect.bottom) + GRACE_AREA;
+            
+            case 'left':
+                // If tooltip is to the left, only give grace when mouse is moving left
+                return mouseX < linkRect.left &&
+                       mouseX > tooltipRect.right - GRACE_AREA &&
+                       mouseY > Math.min(linkRect.top, tooltipRect.top) - GRACE_AREA &&
+                       mouseY < Math.max(linkRect.bottom, tooltipRect.bottom) + GRACE_AREA;
+        }
     }
 
     async loadSettings() {
@@ -130,6 +219,13 @@ export default class ImgurPreviewPlugin extends Plugin {
     private async showTooltip(url: string, x: number, y: number) {
         // Reset zoom level when showing new tooltip
         this.currentZoomLevel = 1;
+
+        // Store the link rectangle for movement calculations
+        const linkElements = document.elementsFromPoint(x, y);
+        const linkElement = linkElements.find(el => el.matches('.cm-link, .cm-formatting-link'));
+        if (linkElement) {
+            this.lastLinkRect = linkElement.getBoundingClientRect();
+        }
         console.log('Showing tooltip for URL:', url);
         
         // Convert gallery URLs to direct image URLs if needed
@@ -172,12 +268,30 @@ export default class ImgurPreviewPlugin extends Plugin {
             const viewportWidth = window.innerWidth;
             const viewportHeight = window.innerHeight;
             
+            // Determine tooltip position relative to link
+            if (this.lastLinkRect) {
+                const linkCenterX = this.lastLinkRect.left + this.lastLinkRect.width / 2;
+                const linkCenterY = this.lastLinkRect.top + this.lastLinkRect.height / 2;
+                
+                if (tooltipRect.top < this.lastLinkRect.bottom) {
+                    this.tooltipPosition = 'below';
+                } else if (tooltipRect.bottom > this.lastLinkRect.top) {
+                    this.tooltipPosition = 'above';
+                } else if (tooltipRect.left < this.lastLinkRect.right) {
+                    this.tooltipPosition = 'right';
+                } else {
+                    this.tooltipPosition = 'left';
+                }
+            }
+            
             if (tooltipRect.right > viewportWidth) {
                 this.tooltip.style.left = `${viewportWidth - tooltipRect.width - 10}px`;
             }
             if (tooltipRect.bottom > viewportHeight) {
                 this.tooltip.style.top = `${viewportHeight - tooltipRect.height - 10}px`;
             }
+
+            console.log('Tooltip position:', this.tooltipPosition);
 
         } catch (error) {
             console.error('Error loading image:', error);
@@ -191,6 +305,12 @@ export default class ImgurPreviewPlugin extends Plugin {
         console.log('Hiding tooltip');
         this.tooltip.style.display = 'none';
         this.currentTooltipLink = null;
+        this.lastLinkRect = null;
+        this.tooltipPosition = null;
+        if (this.hideTimeoutId) {
+            clearTimeout(this.hideTimeoutId);
+            this.hideTimeoutId = null;
+        }
     }
 
     private convertToDirectImageUrl(url: string): string {
