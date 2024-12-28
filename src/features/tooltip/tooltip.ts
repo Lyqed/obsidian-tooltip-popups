@@ -7,7 +7,7 @@ export class TooltipManager {
     private currentScale = 1;
     private maxWidth: number;
     private maxHeight: number;
-    private wheelListener: () => void;
+    private wheelListener: (e: WheelEvent) => void;
 
     constructor(maxWidth: number, maxHeight: number) {
         this.maxWidth = maxWidth;
@@ -44,8 +44,12 @@ export class TooltipManager {
             this.hideTooltip();
         });
 
-        // Hide tooltip immediately when scrolling starts
-        this.wheelListener = () => this.hideTooltip();
+        // Hide tooltip on scroll unless it's a zoom action
+        this.wheelListener = (e: WheelEvent) => {
+            if (!e.ctrlKey) {
+                this.hideTooltip();
+            }
+        };
         document.addEventListener('wheel', this.wheelListener);
     }
 
