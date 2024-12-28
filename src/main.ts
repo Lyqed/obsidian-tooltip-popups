@@ -85,6 +85,11 @@ export default class ImgurPreviewPlugin extends Plugin {
     private async handleMouseOver(event: MouseEvent, view: EditorView) {
         const target = event.target as HTMLElement;
         
+        // Check if we're actually hovering over a link element
+        if (!target.matches('.cm-link')) {
+            return;
+        }
+
         // Clear any existing hover timeout
         if (this.hoverTimeout) {
             clearTimeout(this.hoverTimeout);
@@ -109,11 +114,11 @@ export default class ImgurPreviewPlugin extends Plugin {
 
         while ((match = linkRegex.exec(lineText)) !== null) {
             const [fullMatch, linkText, url] = match;
-            const linkStart = match.index;
-            const linkEnd = linkStart + fullMatch.length;
+            const linkTextStart = match.index + 1; // +1 to skip the opening [
+            const linkTextEnd = linkTextStart + linkText.length;
 
-            // Check if the cursor is within this link
-            if (pos >= line.from + linkStart && pos <= line.from + linkEnd) {
+            // Check if the cursor is within the link text only (between [ and ])
+            if (pos >= line.from + linkTextStart && pos <= line.from + linkTextEnd) {
                 foundLink = url;
                 console.log('Found Imgur link:', url);
                 break;
