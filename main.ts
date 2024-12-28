@@ -1,18 +1,55 @@
-import { Plugin } from 'obsidian';
+import { Plugin, PluginSettingTab, Setting, App } from 'obsidian';
 import { EditorView } from '@codemirror/view';
+
+interface ImgurPreviewSettings {
+    defaultMaxWidth: number;
+    defaultMaxHeight: number;
+}
+
+const DEFAULT_SETTINGS: ImgurPreviewSettings = {
+    defaultMaxWidth: 300,
+    defaultMaxHeight: 300
+}
 
 export default class ImgurPreviewPlugin extends Plugin {
     private tooltip: HTMLElement;
     private currentTooltipLink: string | null = null;
     private hoverTimeout: NodeJS.Timeout | null = null;
+    settings: ImgurPreviewSettings;
+    private currentZoomLevel: number = 1;
 
     async onload() {
         console.log('Loading Imgur Preview plugin');
+        
+        await this.loadSettings();
 
         // Create tooltip element
         this.tooltip = document.createElement('div');
         this.tooltip.addClass('imgur-preview-tooltip');
         document.body.appendChild(this.tooltip);
+
+        // Add settings tab
+        this.addSettingTab(new ImgurPreviewSettingTab(this.app, this));
+
+        // Add wheel event listener for zooming
+        this.registerDomEvent(document, 'wheel', (e: WheelEvent) => {
+            if (this.currentTooltipLink && e.ctrlKey) {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                this.currentZoomLevel *= delta;
+                this.currentZoomLevel = Math.max(0.1, Math.min(5, this.currentZoomLevel));
+                
+                const img = this.tooltip.querySelector('img');
+                if (img) {
+                    const newWidth = this.settings.defaultMaxWidth * this.currentZoomLevel;
+                    const newHeight = this.settings.defaultMaxHeight * this.currentZoomLevel;
+                    img.style.maxWidth = `${newWidth}px`;
+                    img.style.maxHeight = `${newHeight}px`;
+                    
+                    console.log(`Zoom level: ${this.currentZoomLevel}, Size: ${newWidth}x${newHeight}`);
+                }
+            }
+        });
 
         // Register event handler for editor changes
         this.registerEditorExtension([
@@ -82,7 +119,17 @@ export default class ImgurPreviewPlugin extends Plugin {
         this.hideTooltip();
     }
 
+    async loadSettings() {
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    }
+
+    async saveSettings() {
+        await this.saveData(this.settings);
+    }
+
     private async showTooltip(url: string, x: number, y: number) {
+        // Reset zoom level when showing new tooltip
+        this.currentZoomLevel = 1;
         console.log('Showing tooltip for URL:', url);
         
         // Convert gallery URLs to direct image URLs if needed
@@ -104,6 +151,8 @@ export default class ImgurPreviewPlugin extends Plugin {
         try {
             // Create and load the image
             const img = document.createElement('img');
+            img.style.maxWidth = `${this.settings.defaultMaxWidth}px`;
+            img.style.maxHeight = `${this.settings.defaultMaxHeight}px`;
             
             // Create a promise that resolves when the image loads or rejects on error
             await new Promise((resolve, reject) => {
@@ -164,5 +213,54 @@ export default class ImgurPreviewPlugin extends Plugin {
 
         // Convert to i.imgur.com URL
         return `https://i.imgur.com${cleanPath}`;
+    }
+}
+
+class ImgurPreviewSettingTab extends PluginSettingTab {
+    plugin: ImgurPreviewPlugin;
+
+    constructor(app: App, plugin: ImgurPreviewPlugin) {
+        super(app, plugin);
+        this.plugin = plugin;
+    }
+
+    display(): void {
+        const {containerEl} = this;
+
+        containerEl.empty();
+
+        containerEl.createEl('h2', {text: 'Imgur Preview Settings'});
+
+        new Setting(containerEl)
+            .setName('Default Maximum Width')
+            .setDesc('Maximum width of the preview image in pixels')
+            .addText(text => text
+                .setPlaceholder('300')
+                .setValue(this.plugin.settings.defaultMaxWidth.toString())
+                .onChange(async (value) => {
+                    const numValue = Number(value);
+                    if (!isNaN(numValue) && numValue > 0) {
+                        this.plugin.settings.defaultMaxWidth = numValue;
+                        await this.plugin.saveSettings();
+                    }
+                }));
+
+        new Setting(containerEl)
+            .setName('Default Maximum Height')
+            .setDesc('Maximum height of the preview image in pixels')
+            .addText(text => text
+                .setPlaceholder('300')
+                .setValue(this.plugin.settings.defaultMaxHeight.toString())
+                .onChange(async (value) => {
+                    const numValue = Number(value);
+                    if (!isNaN(numValue) && numValue > 0) {
+                        this.plugin.settings.defaultMaxHeight = numValue;
+                        await this.plugin.saveSettings();
+                    }
+                }));
+
+        containerEl.createEl('p', {
+            text: 'Tip: You can also use Ctrl + Mouse Wheel to zoom the preview while hovering over a link.'
+        });
     }
 }
