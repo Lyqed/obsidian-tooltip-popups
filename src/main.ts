@@ -85,8 +85,10 @@ export default class ImgurPreviewPlugin extends Plugin {
     private async handleMouseOver(event: MouseEvent, view: EditorView) {
         const target = event.target as HTMLElement;
         
-        // Check if we're actually hovering over a link element
-        if (!target.matches('.cm-link')) {
+        // Check if we're hovering over a link element
+        // In non-expanded view, links have class 'cm-underline'
+        // In expanded view, links have class 'cm-link' but not 'cm-formatting-link'
+        if (!target.matches('.cm-underline, .cm-link:not(.cm-formatting-link)')) {
             return;
         }
 
@@ -227,7 +229,7 @@ export default class ImgurPreviewPlugin extends Plugin {
 
         // Store the link rectangle for movement calculations
         const linkElements = document.elementsFromPoint(x, y);
-        const linkElement = linkElements.find(el => el.matches('.cm-link, .cm-formatting-link'));
+        const linkElement = linkElements.find(el => el.matches('.cm-underline, .cm-link:not(.cm-formatting-link)'));
         if (linkElement) {
             this.lastLinkRect = linkElement.getBoundingClientRect();
         }
