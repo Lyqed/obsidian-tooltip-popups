@@ -38,16 +38,22 @@ const context = await esbuild.context({
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,
-	outfile: "main.js",
+	outfile: "dst/main.js",
 });
+
+// Ensure dst directory exists
+if (!fs.existsSync("dst")) {
+    fs.mkdirSync("dst", { recursive: true });
+}
 
 if (prod) {
 	await context.rebuild();
+	// Copy styles.css to dst in production
+	fs.copyFileSync("src/styles.css", "dst/styles.css");
 	process.exit(0);
 } else {
 	await context.rebuild();
 	await context.watch();
-
-	// Copy styles.css to the output directory
-	fs.copyFileSync("styles.css", "styles.css");
+	// Copy styles.css to dst in development
+	fs.copyFileSync("src/styles.css", "dst/styles.css");
 }
