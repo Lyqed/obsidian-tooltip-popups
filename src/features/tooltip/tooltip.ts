@@ -34,9 +34,10 @@ export class TooltipManager {
         this.tooltipElement.style.backgroundColor = 'var(--background-primary)';
         this.tooltipElement.style.border = '1px solid var(--background-modifier-border)';
         this.tooltipElement.style.borderRadius = '5px';
-        this.tooltipElement.style.padding = '5px';
+        this.tooltipElement.style.padding = '10px';
         this.tooltipElement.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
         this.tooltipElement.style.cursor = 'grab';
+        this.tooltipElement.style.overflow = 'hidden';
     }
 
     private setupTooltipEventListeners() {
@@ -240,13 +241,15 @@ export class TooltipManager {
                 // Apply transform scale for smooth proportional scaling
                 img.style.transform = `scale(${newScale})`;
                 
-                // Update container size to match scaled image
+                // Update container size to match scaled image plus padding
+                const padding = 20; // 10px padding on each side
                 const scaledWidth = this.initialWidth * newScale;
                 const scaledHeight = this.initialHeight * newScale;
                 const container = img.parentElement;
                 if (container) {
-                    container.style.width = `${scaledWidth}px`;
-                    container.style.height = `${scaledHeight}px`;
+                    container.style.width = `${scaledWidth + padding}px`;
+                    container.style.height = `${scaledHeight + padding}px`;
+                    container.style.transition = 'width 0.1s ease-out, height 0.1s ease-out';
                 }
             }
         }
