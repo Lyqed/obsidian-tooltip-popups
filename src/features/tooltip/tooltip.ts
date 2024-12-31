@@ -1,3 +1,5 @@
+import type ImgurPreviewPlugin from '../../main';
+
 export class TooltipManager {
     private tooltipElement: HTMLElement;
     private currentTooltipLink: string | null = null;
@@ -5,8 +7,10 @@ export class TooltipManager {
     private lastLinkRect: DOMRect | null = null;
     private tooltipPosition: { x: number; y: number } | null = null;
     private currentScale = 1;
+    private lastUsedScale = 1;
     private maxWidth: number;
     private maxHeight: number;
+    private plugin: ImgurPreviewPlugin;
     private wheelListener: (e: WheelEvent) => void;
     private isDragging = false;
     private dragStartX = 0;
@@ -17,7 +21,8 @@ export class TooltipManager {
     private initialWidth = 0;
     private initialHeight = 0;
 
-    constructor(maxWidth: number, maxHeight: number) {
+    constructor(plugin: ImgurPreviewPlugin, maxWidth: number, maxHeight: number) {
+        this.plugin = plugin;
         this.maxWidth = maxWidth;
         this.maxHeight = maxHeight;
         this.tooltipElement = document.createElement('div');
@@ -36,7 +41,8 @@ export class TooltipManager {
         this.tooltipElement.style.borderRadius = '5px';
         this.tooltipElement.style.padding = '10px';
         this.tooltipElement.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
-        this.tooltipElement.style.cursor = 'grab';
+        // Use pointer cursor for hover
+        this.tooltipElement.style.cursor = 'pointer';
         this.tooltipElement.style.overflow = 'hidden';
     }
 
@@ -78,7 +84,8 @@ export class TooltipManager {
             const rect = this.tooltipElement.getBoundingClientRect();
             this.tooltipStartX = rect.left;
             this.tooltipStartY = rect.top;
-            this.tooltipElement.style.cursor = 'grabbing';
+            // Keep pointer cursor during drag
+            this.tooltipElement.style.cursor = 'pointer';
         });
 
         document.addEventListener('mousemove', (e: MouseEvent) => {
@@ -94,16 +101,16 @@ export class TooltipManager {
             if (this.isDragging) {
                 this.isDragging = false;
                 this.isPositionLocked = true;
-                this.tooltipElement.style.cursor = 'grab';
+                // Return to pointer cursor after drag
+                this.tooltipElement.style.cursor = 'pointer';
             }
         });
 
-        // Double click to reset position lock
+        // Double click to force close tooltip
         this.tooltipElement.addEventListener('dblclick', (e: MouseEvent) => {
             e.preventDefault();
             e.stopPropagation();
-            this.isPositionLocked = false;
-            this.hideTooltip();
+            this.hideTooltip(true); // Force close even when locked
         });
     }
 
@@ -121,7 +128,8 @@ export class TooltipManager {
 
         // Clear existing content
         this.tooltipElement.innerHTML = '';
-        this.currentScale = 1;
+        // Use remembered scale if enabled, otherwise use default
+        this.currentScale = this.plugin.settings.rememberLastSize ? this.lastUsedScale : 1;
 
         // Create and setup image element
         const img = document.createElement('img');
@@ -216,12 +224,17 @@ export class TooltipManager {
         this.tooltipElement.style.top = `${tooltipY}px`;
     }
 
-    hideTooltip() {
-        if (!this.isPositionLocked) {
+    hideTooltip(force: boolean = false) {
+        if (force || !this.isPositionLocked) {
+            // Remember scale if enabled
+            if (this.plugin.settings.rememberLastSize) {
+                this.lastUsedScale = this.currentScale;
+            }
             this.tooltipElement.style.display = 'none';
             this.currentTooltipLink = null;
             this.lastLinkRect = null;
             this.tooltipPosition = null;
+            this.isPositionLocked = false;
         }
     }
 

@@ -48,6 +48,16 @@ export class ImgurPreviewSettingTab extends PluginSettingTab {
             text: 'Tip: You can also use Ctrl + Mouse Wheel to zoom the preview while hovering over a link.'
         });
 
+        new Setting(containerEl)
+            .setName('Remember Last Size')
+            .setDesc('When enabled, new tooltips will open at the same size as the last viewed image. When disabled, tooltips always open at default size.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.rememberLastSize)
+                .onChange(async (value) => {
+                    this.plugin.settings.rememberLastSize = value;
+                    await this.plugin.saveSettings();
+                }));
+
         containerEl.createEl('h3', {
             text: 'Beta Features',
             cls: 'imgur-preview-beta-heading'

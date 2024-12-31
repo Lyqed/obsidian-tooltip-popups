@@ -32,6 +32,7 @@ export default class ImgurPreviewPlugin extends Plugin {
 
         // Initialize tooltip manager
         this.tooltipManager = new TooltipManager(
+            this,
             this.settings.defaultMaxWidth,
             this.settings.defaultMaxHeight
         );
