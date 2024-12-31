@@ -119,19 +119,29 @@ export default class ImgurPreviewPlugin extends Plugin {
         console.log('Line text:', lineText);
 
         // Parse markdown links in the current line
-        const linkRegex = /\[([^\]]+)\]\((https?:\/\/(?:i\.)?imgur\.com\/[^\)]+)\)/g;
+        const linkRegex = /\[([^\]]+)\]\((.*?)\)/g;
         let match: RegExpExecArray | null;
         let foundLink: string | null = null;
 
         while ((match = linkRegex.exec(lineText)) !== null) {
-            const [fullMatch, linkText, url] = match;
+            const [fullMatch, linkText, path] = match;
+            // Skip if not an image path
+            if (!path.match(/\.(jpe?g|png|gif|svg|webp)$/i) && !path.match(/^https?:\/\/(?:i\.)?imgur\.com\//)) {
+                continue;
+            }
             const linkTextStart = match.index + 1; // +1 to skip the opening [
             const linkTextEnd = linkTextStart + linkText.length;
 
             // Check if the cursor is within the link text only (between [ and ])
             if (pos >= line.from + linkTextStart && pos <= line.from + linkTextEnd) {
-                foundLink = url;
-                console.log('Found Imgur link:', url);
+                // For local images, convert to absolute path
+                if (!path.startsWith('http')) {
+                    const imageFile = this.app.metadataCache.getFirstLinkpathDest(decodeURIComponent(path), '');
+                    foundLink = imageFile ? this.app.vault.getResourcePath(imageFile) : path;
+                } else {
+                    foundLink = path;
+                }
+                console.log('Found image link:', foundLink);
                 break;
             }
         }

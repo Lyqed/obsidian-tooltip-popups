@@ -104,10 +104,10 @@ export class TooltipManager {
         });
     }
 
-    showTooltip(imgurLink: string, coords: { x: number; y: number }) {
-        if (this.currentTooltipLink === imgurLink) return;
+    showTooltip(imgLink: string, coords: { x: number; y: number }) {
+        if (this.currentTooltipLink === imgLink) return;
 
-        this.currentTooltipLink = imgurLink;
+        this.currentTooltipLink = imgLink;
         this.tooltipPosition = coords;
 
         // Store the link element's rect for mouse movement calculations
@@ -129,8 +129,8 @@ export class TooltipManager {
         img.style.transition = 'transform 0.1s ease-out';
         img.style.pointerEvents = 'none'; // Prevent image from interfering with drag
 
-        // Modify imgur link to get direct image if needed
-        const directImageLink = this.getDirectImageLink(imgurLink);
+        // Get direct image link
+        const directImageLink = this.getDirectImageLink(imgLink);
         img.src = directImageLink;
 
         this.tooltipElement.appendChild(img);
@@ -138,15 +138,32 @@ export class TooltipManager {
         this.tooltipElement.style.display = 'block';
     }
 
-    private getDirectImageLink(imgurLink: string): string {
-        // If it's already a direct image link, return it
-        if (imgurLink.match(/\.(jpg|jpeg|png|gif)$/i)) {
-            return imgurLink;
+    private getDirectImageLink(link: string): string {
+        // If it's already a direct image link (local or remote), return it
+        if (link.match(/\.(jpe?g|png|gif|svg|webp)$/i)) {
+            return link;
         }
 
-        // Convert imgur.com links to i.imgur.com direct image links
-        const imgurId = imgurLink.split('/').pop();
-        return `https://i.imgur.com/${imgurId}.jpg`;
+        // Handle Imgur links
+        if (link.includes('imgur.com')) {
+            // Convert imgur.com links to i.imgur.com direct image links
+            const imgurId = link.split('/').pop();
+            if (!imgurId) return link;
+            
+            // Handle both image and album links
+            if (imgurId.includes('.')) {
+                return link; // Already a direct image link
+            }
+            return `https://i.imgur.com/${imgurId}.jpg`;
+        }
+
+        // Handle app:// protocol for local images
+        if (link.startsWith('app://')) {
+            return link;
+        }
+
+        // Return original link if no conversion needed
+        return link;
     }
 
     private positionTooltip(x: number, y: number) {

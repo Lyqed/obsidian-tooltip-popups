@@ -1,0 +1,3981 @@
+Directory structure:
+└── src/
+    ├── ui/
+    │   ├── menuView.ts
+    │   ├── container/
+    │   │   ├── normalContainer.view.ts
+    │   │   ├── pinContainer.view.ts
+    │   │   └── container.view.ts
+    │   └── galleryNavbarView.ts
+    ├── util/
+    │   ├── markdowParse.ts
+    │   └── imgUtil.ts
+    ├── main.ts
+    ├── factory/
+    │   └── containerFactory.ts
+    ├── model/
+    │   ├── settings.to.ts
+    │   ├── commonTo.ts
+    │   ├── imgTo.ts
+    │   └── galleryNavbarTo.ts
+    ├── lang/
+    │   ├── helpers.ts
+    │   └── locale/
+    │       ├── ro.ts
+    │       ├── pt.ts
+    │       ├── de.ts
+    │       ├── zh-tw.ts
+    │       ├── ko.ts
+    │       ├── ar.ts
+    │       ├── hi.ts
+    │       ├── pt-br.ts
+    │       ├── ja.ts
+    │       ├── id.ts
+    │       ├── pl.ts
+    │       ├── tr.ts
+    │       ├── da.ts
+    │       ├── zh-cn.ts
+    │       ├── nl.ts
+    │       ├── no.ts
+    │       ├── cz.ts
+    │       ├── en.ts
+    │       ├── ru.ts
+    │       ├── en-gb.ts
+    │       ├── it.ts
+    │       ├── es.ts
+    │       └── fr.ts
+    └── conf/
+        ├── constants.ts
+        └── settings.ts
+
+
+Files Content:
+
+================================================
+File: /src/ui/menuView.ts
+================================================
+import {SEPARATOR_SYMBOL, TOOLBAR_CONF} from "../conf/constants";
+import {Menu} from "obsidian";
+import {t} from "../lang/helpers";
+import {PinContainerView} from "./container/pinContainer.view";
+import {ImgCto} from "../model/imgTo";
+
+/**
+ * Right click menu
+ */
+export class MenuView {
+
+  private menu: Menu;
+
+  private pinContainerView: PinContainerView;
+
+  private static activeImg: ImgCto;
+
+  constructor(pinContainerView: PinContainerView) {
+    this.pinContainerView = pinContainerView;
+  }
+
+  private init = () => {
+    if (this.menu) return;
+    this.menu = new Menu();
+    for (const itemConf of TOOLBAR_CONF) {
+      if (!itemConf.enableMenu)
+        continue;
+      if (SEPARATOR_SYMBOL === itemConf.title) {
+        this.menu.addSeparator();
+        continue;
+      }
+      this.menu.addItem(item => {
+        if (itemConf.icon)
+          item.setIcon(itemConf.icon);
+        // @ts-ignore
+        item.setTitle(t(itemConf.title))
+          .onClick(() => {
+            this.pinContainerView.clickImgToolbar(null, itemConf.class, MenuView.activeImg);
+          });
+      })
+    }
+  }
+
+  public show = (event: MouseEvent, activeImg: ImgCto) => {
+    MenuView.activeImg = activeImg;
+    this.init();
+    this.menu.showAtPosition({x: event.clientX, y: event.clientY});
+  }
+}
+
+================================================
+File: /src/ui/container/normalContainer.view.ts
+================================================
+import {OIT_CLASS, TOOLBAR_CONF} from 'src/conf/constants';
+import {t} from 'src/lang/helpers';
+import ImageToolkitPlugin from 'src/main';
+import {ContainerView} from './container.view';
+import {GalleryNavbarView} from '../galleryNavbarView';
+import {ImgCto} from "../../model/imgTo";
+
+export class NormalContainerView extends ContainerView {
+
+  private galleryNavbarView: GalleryNavbarView;
+
+  constructor(plugin: ImageToolkitPlugin) {
+    super(plugin);
+  }
+
+  public setActiveImgForMouseEvent(imgCto: ImgCto): void {
+
+  }
+
+  //region ================== Container View ========================
+  public initContainerDom = (parentContainerEl: Element): ImgCto => {
+    let imgCto: ImgCto;
+    if (!this.imgInfo.oitContainerEl) {
+      // init `oit-normal` dom at first time
+      // <div class="oit oit-normal"> ... <div>
+      (this.imgInfo.oitContainerEl = createDiv()).addClass(OIT_CLASS.CONTAINER_ROOT, OIT_CLASS.CONTAINER_NORMAL)
+      parentContainerEl.appendChild(this.imgInfo.oitContainerEl);
+
+      // 1. <div class="oit-img-container">...</div>
+      this.imgInfo.oitContainerEl.append(this.imgInfo.imgContainerEl = createDiv(OIT_CLASS.IMG_CONTAINER));
+      // 1.1. <div class="oit-img-container"> `<img class="oit-img-view" src="" alt="">` </div>
+      this.updateImgViewElAndList(this.imgInfo);
+
+      // 2. <div class="oit-img-tip"></div>
+      this.imgInfo.oitContainerEl.appendChild(this.imgInfo.imgTipEl = createDiv(OIT_CLASS.IMG_TTP));
+      this.imgInfo.imgTipEl.hidden = true;
+
+      // 3. <div class="oit-img-footer"> ... <div>
+      this.imgInfo.oitContainerEl.appendChild(this.imgInfo.imgFooterEl = createDiv(OIT_CLASS.IMG_FOOTER));
+
+      // 3.1. <div class="oit-img-title"></div>
+      this.imgInfo.imgFooterEl.appendChild(this.imgInfo.imgTitleEl = createDiv(OIT_CLASS.IMG_TITLE));
+      // <span class="oit-img-title-name"></span>
+      this.imgInfo.imgTitleEl.appendChild(this.imgInfo.imgTitleNameEl = createSpan(OIT_CLASS.IMG_TITLE_NAME));
+      // <span class="oit-img-title-index"></span>
+      this.imgInfo.imgTitleEl.appendChild(this.imgInfo.imgTitleIndexEl = createSpan(OIT_CLASS.IMG_TITLE_INDEX));
+
+      // 3.2. <ul class="oit-img-toolbar">
+      const imgToolbarUlEL = createEl('ul');
+      imgToolbarUlEL.addClass(OIT_CLASS.IMG_TOOLBAR);
+      this.imgInfo.imgFooterEl.appendChild(imgToolbarUlEL);
+      let toolbarLi: HTMLLIElement;
+      for (const toolbar of TOOLBAR_CONF) {
+        if (!toolbar.enableToolbarIcon) continue;
+        imgToolbarUlEL.appendChild(toolbarLi = createEl('li'));
+        toolbarLi.addClass(toolbar.class);
+        toolbarLi.setAttribute('alt', toolbar.title);
+        // @ts-ignore
+        toolbarLi.setAttribute('title', t(toolbar.title));
+      }
+      // add event: for oit-img-toolbar ul
+      imgToolbarUlEL.addEventListener('click', this.clickImgToolbar);
+
+      // <div class="img-player"> <img class='img-fullscreen' src=''> </div>
+      this.imgInfo.oitContainerEl.appendChild(this.imgInfo.imgPlayerEl = createDiv(OIT_CLASS.IMG_PLAYER)); // img-player for full screen mode
+      this.imgInfo.imgPlayerEl.appendChild(this.imgInfo.imgPlayerImgViewEl = createEl('img'));
+      this.imgInfo.imgPlayerImgViewEl.addClass(OIT_CLASS.IMG_FULLSCREEN);
+    }
+    imgCto = this.imgInfo.imgList[0];
+    this.imgGlobalStatus.activeImg = imgCto;
+    return imgCto;
+  }
+
+  public openOitContainerView = (matchedImg: ImgCto): void => {
+    if (!this.imgInfo.oitContainerEl) {
+      console.error('obsidian-image-toolkit: oit-*-container-view has not been initialized!');
+      return;
+    }
+    matchedImg.popup = true;
+    this.imgGlobalStatus.popup = true;
+    // display 'oit-normal'
+    this.imgInfo.oitContainerEl.style.setProperty('display', 'block');
+  }
+
+  public closeContainerView = (event?: MouseEvent, activeImg?: ImgCto): void => {
+    if (event) {
+      const target = <HTMLElement>event.target;
+      if (!target || !(target.hasClass(OIT_CLASS.CONTAINER_ROOT) || target.hasClass(OIT_CLASS.IMG_CONTAINER)))
+        return;
+    }
+    if (!activeImg && !(activeImg = this.imgGlobalStatus.activeImg)) return;
+    if (this.imgInfo.oitContainerEl) {
+      this.imgInfo.oitContainerEl.style.setProperty('display', 'none'); // hide 'oit-normal'
+      this.renderImgTitle('', '');
+      this.renderImgView(activeImg.imgViewEl, '', '');
+      // remove events
+      this.imgGlobalStatus.popup = false;
+      activeImg.popup = false;
+      activeImg.mtime = 0;
+      this.addOrRemoveEvents(activeImg, false);
+    }
+    if (this.plugin.settings.galleryNavbarToggle && this.galleryNavbarView) {
+      this.galleryNavbarView.closeGalleryNavbar();
+    }
+  }
+  //endregion
+
+  //region ================== Gallery Navbar ========================
+  protected renderGalleryNavbar = () => {
+    // <div class="gallery-navbar"> <ul class="gallery-list"> <li> <img src='' alt=''> </li> <li...> <ul> </div>
+    if (!this.plugin.settings.galleryNavbarToggle) return;
+    if (!this.galleryNavbarView) {
+      this.galleryNavbarView = new GalleryNavbarView(this, this.plugin);
+    }
+    this.galleryNavbarView.renderGalleryImg(this.imgInfo.imgFooterEl);
+  }
+
+  protected removeGalleryNavbar = () => {
+    if (!this.galleryNavbarView) return;
+    this.galleryNavbarView.remove();
+    this.galleryNavbarView = null;
+  }
+  //endregion
+
+  public renderImgTitle = (name?: string, index?: string): void => {
+    if (undefined !== name && null !== name)
+      this.imgInfo.imgTitleNameEl?.setText(name);
+    if (undefined !== index && null !== index)
+      this.imgInfo.imgTitleIndexEl?.setText(' ' + index);
+  }
+
+  protected switchImageOnGalleryNavBar = (event: KeyboardEvent, next: boolean) => {
+    if (!this.checkHotkeySettings(event, this.plugin.settings.switchTheImageHotkey))
+      return;
+    this.galleryNavbarView?.switchImage(next);
+  }
+
+}
+
+
+================================================
+File: /src/ui/container/pinContainer.view.ts
+================================================
+import {OIT_CLASS} from "src/conf/constants";
+import ImageToolkitPlugin from "src/main";
+import {ContainerView} from "./container.view";
+import {ImgCto} from "../../model/imgTo";
+import {MenuView} from "../menuView";
+
+/**
+ * PinContainerView: Pin an image on the top
+ * @Support: move an image by mouse; close an image by Esc
+ * @Nonsupport: move an image by keyboard; display gallery navbar
+ */
+export class PinContainerView extends ContainerView {
+
+  constructor(plugin: ImageToolkitPlugin/*, viewMode: ViewMode*/) {
+    super(plugin/*, viewMode, plugin.settings.pinMaximum*/);
+    this.setMenuView(new MenuView(this));
+  }
+
+  public setActiveImgForMouseEvent(imgCto: ImgCto): void {
+    this.imgGlobalStatus.activeImg = imgCto;
+  }
+
+  //region ================== Container View ========================
+  public initContainerDom = (parentContainerEl: Element): ImgCto => {
+    /*
+    <div class="oit-pin-container-view">
+      <div class="oit-img-container">
+        <img class="oit-img-view" data-index='0' src="" alt="">
+        <img class="oit-img-view" data-index='1' src="" alt="">
+        ...
+      </div>
+    </div>
+     */
+    if (!this.imgInfo.oitContainerEl) { // init at first time
+      // create: <div class="oit oit-pin">
+      (this.imgInfo.oitContainerEl = createDiv()).addClass(OIT_CLASS.CONTAINER_ROOT, OIT_CLASS.CONTAINER_PIN)
+      parentContainerEl.appendChild(this.imgInfo.oitContainerEl);
+      // <div class="oit oit-pin"> <div class="oit-img-container"/> </div>
+      this.imgInfo.oitContainerEl.append(this.imgInfo.imgContainerEl = createDiv(OIT_CLASS.IMG_CONTAINER));
+
+      // <div class="oit-img-tip"></div>
+      this.imgInfo.oitContainerEl.appendChild(this.imgInfo.imgTipEl = createDiv(OIT_CLASS.IMG_TTP)); // oit-img-tip
+      this.imgInfo.imgTipEl.hidden = true; // hide 'oit-img-tip'
+
+      // <div class="img-player"> <img class='img-fullscreen' src=''> </div>
+      this.imgInfo.oitContainerEl.appendChild(this.imgInfo.imgPlayerEl = createDiv(OIT_CLASS.IMG_PLAYER)); // img-player for full screen mode
+      this.imgInfo.imgPlayerEl.appendChild(this.imgInfo.imgPlayerImgViewEl = createEl('img'));
+      this.imgInfo.imgPlayerImgViewEl.addClass(OIT_CLASS.IMG_FULLSCREEN);
+    }
+    // <div class="oit-img-container"> <img class="oit-img-view" src="" alt=""> </div>
+    this.updateImgViewElAndList(this.imgInfo);
+    return this.getMatchedImg();
+  }
+
+  public openOitContainerView = (matchedImg: ImgCto): void => {
+    if (!this.imgInfo.oitContainerEl) {
+      console.error('obsidian-image-toolkit: oit-*-container-view has not been initialized!');
+      return;
+    }
+    matchedImg.popup = true;
+    if (!this.imgGlobalStatus.popup) {
+      this.imgGlobalStatus.popup = true;
+      this.imgGlobalStatus.activeImgZIndex = 0;
+      this.imgInfo.imgList.forEach(value => {
+        value.zIndex = 0;
+      });
+    } else {
+      matchedImg.zIndex = (++this.imgGlobalStatus.activeImgZIndex);
+    }
+    matchedImg.imgViewEl.style.setProperty('z-index', matchedImg.zIndex + '');
+    // display 'oit-pin-container-view'
+    this.imgInfo.oitContainerEl.style.setProperty('display', 'block');
+  }
+
+  /**
+   * hide container view
+   * @param event not null: click event; null: keyboard event (Esc)
+   * @param activeImg
+   */
+  public closeContainerView = (event?: MouseEvent, activeImg?: ImgCto): void => {
+    if (event && !activeImg) {
+      // PinContainerView doesn't need click event to hide container for now
+      return;
+    }
+    if (!this.imgInfo.oitContainerEl) return;
+    if (!activeImg && !(activeImg = this.imgGlobalStatus.activeImg)) return;
+    // console.log('closeContainerView', event, activeImg)
+    this.renderImgView(activeImg.imgViewEl, '', '');
+    activeImg.popup = false;
+    activeImg.mtime = 0;
+
+    let globalPopupFlag: boolean = false;
+    for (const imgCto of this.imgInfo.imgList) {
+      if (imgCto.popup) {
+        globalPopupFlag = true;
+        break;
+      }
+    }
+    if (!globalPopupFlag) {
+      this.imgInfo.oitContainerEl.style.setProperty('display', 'none'); // hide 'oit-pin-container-view'
+      this.imgGlobalStatus.activeImgZIndex = 0;
+      this.imgInfo.imgList.forEach(value => {
+        value.zIndex = 0;
+      });
+    }
+    this.imgGlobalStatus.popup = globalPopupFlag;
+    this.addOrRemoveEvents(activeImg, false);
+  }
+  //endregion
+
+  protected setActiveImgZIndex = (activeImg: ImgCto) => {
+    let isUpdate: boolean = false;
+    for (const imgCto of this.imgInfo.imgList) {
+      if (activeImg.index !== imgCto.index && activeImg.zIndex <= imgCto.zIndex) {
+        isUpdate = true;
+        break;
+      }
+    }
+    if (isUpdate) {
+      activeImg.zIndex = (++this.imgGlobalStatus.activeImgZIndex);
+      activeImg.imgViewEl?.style.setProperty("z-index", activeImg.zIndex + '');
+    }
+  }
+
+}
+
+================================================
+File: /src/ui/container/container.view.ts
+================================================
+import {IMG_DEFAULT_BACKGROUND_COLOR, IMG_FULL_SCREEN_MODE, OIT_CLASS, ViewMode} from "src/conf/constants";
+import ImageToolkitPlugin from "src/main";
+import {ImgCto, ImgInfoCto, ImgStatusCto} from "src/model/imgTo";
+import {ImgUtil} from "src/util/imgUtil";
+import {OffsetSizeIto} from "../../model/commonTo";
+import {MenuView} from "../menuView";
+import {Notice} from "obsidian";
+import {t} from "../../lang/helpers";
+
+export abstract class ContainerView {
+
+  protected readonly plugin: ImageToolkitPlugin;
+
+  // body
+  protected parentContainerEl: Element;
+  protected doc: Document;
+
+  // the clicked original image element
+  protected lastClickedImgEl: HTMLImageElement;
+  protected lastClickedImgDefaultStyle = {
+    borderWidth: '',
+    borderStyle: '',
+    borderColor: ''
+  }
+
+  protected imgGlobalStatus: ImgStatusCto = new ImgStatusCto();
+
+  protected imgInfo: ImgInfoCto = new ImgInfoCto();
+
+  // Right click menu
+  protected menuView: MenuView;
+
+
+  protected constructor(plugin: ImageToolkitPlugin) {
+    this.plugin = plugin;
+  }
+
+  public getViewMode = (): ViewMode => {
+    return this.plugin.settings.viewMode;
+  }
+
+  public isPinMode = (): boolean => {
+    return ViewMode.Pin === this.getViewMode();
+  }
+
+  public isNormalMode = (): boolean => {
+    return ViewMode.Normal === this.getViewMode();
+  }
+
+  protected setMenuView = (menuView: MenuView) => {
+    this.menuView = menuView
+  }
+
+  public getPlugin = (): ImageToolkitPlugin => {
+    return this.plugin;
+  }
+
+  public getLastClickedImgEl = (): HTMLImageElement => {
+    return this.lastClickedImgEl;
+  }
+
+  public getActiveImg = (): ImgCto => {
+    return this.imgGlobalStatus.activeImg;
+  }
+
+  public getDoc = (): Document => {
+    return this.doc;
+  }
+
+  /*public setPinMaximum = (val: number) => {
+    this.pinMaximum = val;
+  }*/
+
+  public getOitContainerViewEl = (): HTMLDivElement => {
+    return this.imgInfo.imgContainerEl;
+  }
+
+  abstract setActiveImgForMouseEvent(imgCto: ImgCto): void;
+
+  public getParentContainerEl = (targetEl?: HTMLImageElement): Element => {
+    if (!targetEl) {
+      return this.parentContainerEl;
+    }
+    if (!this.parentContainerEl) {
+      this.parentContainerEl = targetEl.matchParent('body');
+      this.doc = this.parentContainerEl.ownerDocument;
+    }
+    return this.parentContainerEl;
+  }
+
+  //region ================== Container View & Init ========================
+  /**
+   * Render when clicking an image (core step)
+   * @param targetEl clicked image's element
+   * @returns
+   */
+  public renderContainer = (targetEl: HTMLImageElement): void => {
+    if (!this.checkStatus()) return;
+    const matchedImg = this.initContainerView(targetEl, this.getParentContainerEl(targetEl));
+    if (!matchedImg) return;
+    this.openOitContainerView(matchedImg);
+    this.renderGalleryNavbar();
+    this.refreshImg(matchedImg, targetEl.src, targetEl.alt);
+    matchedImg.mtime = new Date().getTime();
+  }
+
+  /**
+   * initContainerDom ->
+   * @param targetEl
+   * @param parentContainerEl  targetEl's body
+   */
+  public initContainerView = (targetEl: HTMLImageElement, parentContainerEl: Element): ImgCto => {
+    const matchedImg = this.initContainerDom(parentContainerEl);
+    if (!matchedImg) return null;
+    matchedImg.targetOriginalImgEl = targetEl;
+    this.restoreBorderForLastClickedImg();
+    this.initDefaultData(matchedImg, window.getComputedStyle(targetEl));
+    this.addBorderForLastClickedImg(targetEl);
+    this.addOrRemoveEvents(matchedImg, true); // add events
+    return matchedImg;
+  }
+
+  abstract initContainerDom(parentContainerEl: Element): ImgCto;
+
+  abstract openOitContainerView(matchedImg: ImgCto): void;
+
+  abstract closeContainerView(event?: MouseEvent, activeImg?: ImgCto): void;
+
+  public removeOitContainerView = () => {
+    this.restoreBorderForLastClickedImg();
+    this.removeGalleryNavbar();
+
+    this.imgInfo.oitContainerEl?.remove();
+    this.imgInfo.oitContainerEl = null;
+    this.imgInfo.imgContainerEl = null;
+
+    this.imgGlobalStatus.dragging = false;
+    this.imgGlobalStatus.popup = false;
+    this.imgGlobalStatus.activeImgZIndex = 0;
+    this.imgGlobalStatus.fullScreen = false;
+    this.imgGlobalStatus.activeImg = null;
+
+    // clear imgList
+    this.imgInfo.imgList.length = 0;
+  }
+
+  protected checkStatus = (): boolean => {
+    const viewMode = this.plugin.getViewMode();
+    if (!viewMode) return false;
+    // none of popped-up-images
+    if (!this.imgGlobalStatus.popup) return true;
+    // Pin mode && Cover mode
+    if (this.isPinMode() && this.plugin.settings.pinCoverMode) return true;
+    // configured max images > current pop-up images
+    if (this.getConfiguredPinMaximum() > this.imgInfo.getPopupImgNum()) return true;
+    new Notice(t("PIN_MAXIMUM_NOTICE"));
+    return false;
+  }
+
+  private getConfiguredPinMaximum = (): number => {
+    if (this.isPinMode())
+      return this.plugin.settings.pinMaximum;
+    return 1;
+  }
+
+  public initDefaultData = (matchedImg: ImgCto, targetImgStyle: CSSStyleDeclaration) => {
+    if (targetImgStyle) {
+      matchedImg.defaultImgStyle.transform = 'none';
+      matchedImg.defaultImgStyle.filter = targetImgStyle.filter;
+      matchedImg.defaultImgStyle.mixBlendMode = targetImgStyle.mixBlendMode;
+
+      matchedImg.defaultImgStyle.borderWidth = targetImgStyle.borderWidth;
+      matchedImg.defaultImgStyle.borderStyle = targetImgStyle.borderStyle;
+      matchedImg.defaultImgStyle.borderColor = targetImgStyle.borderColor;
+
+      this.lastClickedImgDefaultStyle.borderWidth = targetImgStyle.borderWidth;
+      this.lastClickedImgDefaultStyle.borderStyle = targetImgStyle.borderStyle;
+      this.lastClickedImgDefaultStyle.borderColor = targetImgStyle.borderColor;
+    }
+
+    this.imgGlobalStatus.dragging = false;
+    this.imgGlobalStatus.arrowUp = false;
+    this.imgGlobalStatus.arrowDown = false;
+    this.imgGlobalStatus.arrowLeft = false;
+    this.imgGlobalStatus.arrowRight = false;
+
+    matchedImg.invertColor = false;
+    matchedImg.scaleX = false;
+    matchedImg.scaleY = false;
+    matchedImg.fullScreen = false;
+
+    if (!this.imgGlobalStatus.popup) {
+      this.resetClickTimer();
+    }
+  }
+
+  /**
+   * set 'data-oit-target' and lastClickedImgEl
+   * @param targetEl
+   */
+  protected setLastClickedImg = (targetEl: HTMLImageElement) => {
+    if (!targetEl) return;
+    // 'data-oit-target' is set for locating current image
+    targetEl.setAttribute('data-oit-target', '1');
+    this.lastClickedImgEl = targetEl;
+  }
+  //endregion
+
+  //region ================== (Original) Image Border ========================
+  protected addBorderForLastClickedImg = (targetEl: HTMLImageElement) => {
+    this.setLastClickedImg(targetEl);
+    if (!targetEl || !this.plugin.settings.imageBorderToggle) return;
+    const lastClickedImgStyle = targetEl?.style;
+    if (!lastClickedImgStyle) return;
+    lastClickedImgStyle.setProperty('border-width', this.plugin.settings.imageBorderWidth);
+    lastClickedImgStyle.setProperty('border-style', this.plugin.settings.imageBorderStyle);
+    lastClickedImgStyle.setProperty('border-color', this.plugin.settings.imageBorderColor);
+  }
+
+  /**
+   * remove 'data-oit-target'
+   * restore default border style
+   */
+  protected restoreBorderForLastClickedImg = () => {
+    if (!this.lastClickedImgEl) return;
+    this.lastClickedImgEl.removeAttribute('data-oit-target');
+    const lastClickedImgStyle = this.lastClickedImgEl.style;
+    if (lastClickedImgStyle) {
+      lastClickedImgStyle.setProperty('border-width', this.lastClickedImgDefaultStyle.borderWidth);
+      lastClickedImgStyle.setProperty('border-style', this.lastClickedImgDefaultStyle.borderStyle);
+      lastClickedImgStyle.setProperty('border-color', this.lastClickedImgDefaultStyle.borderColor);
+    }
+  }
+  //endregion
+
+  //region ================== Image ========================
+  protected updateImgViewElAndList = (imgInfo: ImgInfoCto) => {
+    if (!imgInfo?.imgContainerEl) return;
+    const pinMaximum: number = this.getConfiguredPinMaximum();
+    const imgNum = this.imgInfo.imgList.length;
+    if (pinMaximum < imgNum) {
+      // remove all imgViewEl and imgList
+      imgInfo.imgContainerEl.innerHTML = '';
+      // clear imgList
+      imgInfo.imgList.length = 0;
+    }
+    // let isUpdate: boolean = false;
+    const curTime = new Date().getTime();
+    for (let i = imgNum; i < pinMaximum; i++) {
+      // <div class="oit-img-container"> `<img class='oit-img-view' data-index='0' src='' alt=''>` </div>
+      let imgViewEl = createEl('img');
+      imgViewEl.addClass(OIT_CLASS.IMG_VIEW);
+      imgViewEl.hidden = true; // hide 'oit-img-view' for now
+      imgViewEl.dataset.index = i + ''; // set data-index
+      this.setImgViewDefaultBackground(imgViewEl);
+      imgInfo.imgContainerEl.appendChild(imgViewEl);
+      // cache imgList
+      imgInfo.imgList.push(new ImgCto(i, curTime, imgViewEl));
+      // isUpdate = true;
+    }
+  }
+
+  protected getMatchedImg = (): ImgCto => {
+    let earliestImg: ImgCto;
+    for (const img of this.imgInfo.imgList) {
+      if (!earliestImg || earliestImg.mtime > img.mtime)
+        earliestImg = img;
+      if (img.popup)
+        continue;
+      return img;
+    }
+    if (this.plugin.settings.pinCoverMode) {
+      return earliestImg;
+    }
+    return null;
+  }
+
+  /**
+   * it may from: renderContainerView(), switch GalleryNavbarView, click toolbar_refresh
+   * @param imgCto
+   * @param imgSrc
+   * @param imgAlt
+   * @param imgTitleIndex
+   */
+  public refreshImg = (imgCto: ImgCto, imgSrc?: string, imgAlt?: string, imgTitleIndex?: string) => {
+    if (!imgSrc) imgSrc = imgCto.imgViewEl.src;
+    if (!imgAlt) imgAlt = imgCto.imgViewEl.alt;
+    this.renderImgTitle(imgAlt, imgTitleIndex);
+    if (imgSrc) {
+      if (imgCto.refreshImgInterval) {
+        clearInterval(imgCto.refreshImgInterval);
+        imgCto.refreshImgInterval = null;
+      }
+      let realImg = new Image();
+      realImg.src = imgSrc;
+      imgCto.refreshImgInterval = setInterval((realImg) => {
+        if (realImg.width > 0 || realImg.height > 0) {
+          clearInterval(imgCto.refreshImgInterval);
+          imgCto.refreshImgInterval = null;
+          this.setImgViewPosition(ImgUtil.calculateImgZoomSize(realImg, imgCto,
+            this.parentContainerEl?.clientWidth, this.parentContainerEl?.clientHeight), 0);
+          this.renderImgView(imgCto.imgViewEl, imgSrc, imgAlt);
+          this.renderImgTip(imgCto);
+          imgCto.imgViewEl.style.setProperty('transform', imgCto.defaultImgStyle.transform);
+          imgCto.imgViewEl.style.setProperty('filter', imgCto.defaultImgStyle.filter);
+          imgCto.imgViewEl.style.setProperty('mix-blend-mode', imgCto.defaultImgStyle.mixBlendMode);
+        }
+      }, 40, realImg);
+    }
+  }
+
+  public renderImgTitle = (name?: string, index?: string): void => {
+  }
+
+  protected setImgViewPosition = (imgZoomSize: ImgCto, rotate?: number) => {
+    const imgViewEl = imgZoomSize.imgViewEl;
+    if (!imgViewEl) return;
+    if (imgZoomSize) {
+      imgViewEl.setAttribute('width', imgZoomSize.curWidth + 'px');
+      imgViewEl.style.setProperty('margin-top', imgZoomSize.top + 'px', 'important');
+      imgViewEl.style.setProperty('margin-left', imgZoomSize.left + 'px', 'important');
+    }
+    const rotateDeg = rotate ? rotate : 0;
+    imgViewEl.style.transform = 'rotate(' + rotateDeg + 'deg)';
+    imgZoomSize.rotate = rotateDeg;
+  }
+
+  protected renderImgView = (imgViewEl: HTMLImageElement, src: string, alt: string) => {
+    if (!imgViewEl) return;
+    imgViewEl.setAttribute('src', src);
+    imgViewEl.setAttribute('alt', alt);
+    imgViewEl.hidden = !src && !alt;
+  }
+
+  public renderImgTip = (activeImg?: ImgCto) => {
+    if (!activeImg)
+      activeImg = this.imgGlobalStatus.activeImg;
+    if (activeImg && this.imgInfo.imgTipEl && activeImg.realWidth > 0 && activeImg.curWidth > 0) {
+      if (this.imgInfo.imgTipTimeout) {
+        clearTimeout(this.imgInfo.imgTipTimeout);
+      }
+      if (this.plugin.settings.imgTipToggle) {
+        this.imgInfo.imgTipEl.hidden = false; // display 'oit-img-tip'
+        const ratio = activeImg.curWidth * 100 / activeImg.realWidth;
+        const isSingleDigit: boolean = 10 > ratio;
+        const width = isSingleDigit ? 20 : 40;
+        const left = activeImg.left + activeImg.curWidth / 2 - width / 2;
+        const top = activeImg.top + activeImg.curHeight / 2 - 10;
+
+        this.imgInfo.imgTipEl.style.setProperty("width", width + 'px');
+        this.imgInfo.imgTipEl.style.setProperty("font-size", isSingleDigit || 100 >= activeImg.curWidth ? 'xx-small' : 'x-small');
+        this.imgInfo.imgTipEl.style.setProperty("left", left + 'px');
+        this.imgInfo.imgTipEl.style.setProperty("top", top + 'px');
+        this.imgInfo.imgTipEl.style.setProperty("z-index", activeImg.zIndex + '');
+        this.imgInfo.imgTipEl.setText(parseInt(ratio + '') + '%');
+
+        this.imgInfo.imgTipTimeout = setTimeout(() => {
+          this.imgInfo.imgTipEl.hidden = true;
+        }, 1000);
+      } else {
+        this.imgInfo.imgTipEl.hidden = true; // hide 'oit-img-tip'
+        this.imgInfo.imgTipTimeout = null;
+      }
+    }
+  }
+
+  public setImgViewDefaultBackgroundForImgList = () => {
+    for (const imgCto of this.imgInfo.imgList) {
+      this.setImgViewDefaultBackground(imgCto.imgViewEl);
+    }
+  }
+
+  public setImgViewDefaultBackground = (imgViewEl: HTMLImageElement) => {
+    if (!imgViewEl) return;
+    if (this.plugin.settings.imgViewBackgroundColor && IMG_DEFAULT_BACKGROUND_COLOR != this.plugin.settings.imgViewBackgroundColor) {
+      imgViewEl.removeClass('img-default-background');
+      imgViewEl.style.setProperty('background-color', this.plugin.settings.imgViewBackgroundColor);
+    } else {
+      imgViewEl.addClass('img-default-background');
+      imgViewEl.style.removeProperty('background-color');
+    }
+  }
+
+  protected setActiveImgZIndex = (activeImg: ImgCto) => {
+  }
+  //endregion
+
+  //region ================== Gallery NavBar ========================
+  protected switchImageOnGalleryNavBar = (event: KeyboardEvent, next: boolean) => {
+  }
+
+  protected renderGalleryNavbar = () => {
+  }
+
+  protected removeGalleryNavbar = () => {
+  }
+  //endregion
+
+  //region ================== full screen ========================
+  /**
+   * full-screen mode
+   */
+  protected showPlayerImg = (activeImg: ImgCto) => {
+    if (!activeImg && !(activeImg = this.imgGlobalStatus.activeImg)) return;
+    this.imgGlobalStatus.fullScreen = true;
+    activeImg.fullScreen = true;
+    // activeImg.imgViewEl.style.setProperty('display', 'none', 'important'); // hide imgViewEl
+    // this.imgInfoCto.imgFooterEl?.style.setProperty('display', 'none'); // hide 'oit-img-footer'
+
+    // show the img-player
+    this.imgInfo.imgPlayerEl.style.setProperty('display', 'block');
+    this.imgInfo.imgPlayerEl.style.setProperty('z-index', (this.imgGlobalStatus.activeImgZIndex + 10) + '');
+    this.imgInfo.imgPlayerEl.addEventListener('click', this.closePlayerImg);
+
+    const windowWidth = this.doc.documentElement.clientWidth || this.doc.body.clientWidth;
+    const windowHeight = this.doc.documentElement.clientHeight || this.doc.body.clientHeight;
+    let newWidth, newHeight;
+    let top = 0, left = 0;
+    if (IMG_FULL_SCREEN_MODE.STRETCH == this.plugin.settings.imgFullScreenMode) {
+      newWidth = windowWidth + 'px';
+      newHeight = windowHeight + 'px';
+    } else if (IMG_FULL_SCREEN_MODE.FILL == this.plugin.settings.imgFullScreenMode) {
+      newWidth = '100%';
+      newHeight = '100%';
+    } else {
+      // fit
+      const widthRatio = windowWidth / activeImg.realWidth;
+      const heightRatio = windowHeight / activeImg.realHeight;
+      if (widthRatio <= heightRatio) {
+        newWidth = windowWidth;
+        newHeight = widthRatio * activeImg.realHeight;
+      } else {
+        newHeight = windowHeight;
+        newWidth = heightRatio * activeImg.realWidth;
+      }
+      top = (windowHeight - newHeight) / 2;
+      left = (windowWidth - newWidth) / 2;
+      newWidth = newWidth + 'px';
+      newHeight = newHeight + 'px';
+    }
+    const imgPlayerImgViewEl = this.imgInfo.imgPlayerImgViewEl;
+    if (imgPlayerImgViewEl) {
+      imgPlayerImgViewEl.setAttribute('src', activeImg.imgViewEl.src);
+      imgPlayerImgViewEl.setAttribute('alt', activeImg.imgViewEl.alt);
+      imgPlayerImgViewEl.setAttribute('width', newWidth);
+      imgPlayerImgViewEl.setAttribute('height', newHeight);
+      imgPlayerImgViewEl.style.setProperty('margin-top', top + 'px');
+      //this.imgInfo.imgPlayerImgViewEl.style.setProperty('margin-left', left + 'px');
+      this.setImgViewDefaultBackground(imgPlayerImgViewEl);
+    }
+  }
+
+  /**
+   * close full screen
+   */
+  protected closePlayerImg = () => {
+    for (const imgCto of this.imgInfo.imgList) {
+      if (!imgCto.fullScreen) continue;
+      // show the popped up image
+      // imgCto.imgViewEl?.style.setProperty('display', 'block', 'important');
+      // this.imgInfoCto.imgFooterEl?.style.setProperty('display', 'block');
+    }
+    // hide full screen
+    if (this.imgInfo.imgPlayerEl) {
+      this.imgInfo.imgPlayerEl.style.setProperty('display', 'none'); // hide 'img-player'
+      this.imgInfo.imgPlayerEl.removeEventListener('click', this.closePlayerImg);
+    }
+    if (this.imgInfo.imgPlayerImgViewEl) {
+      this.imgInfo.imgPlayerImgViewEl.setAttribute('src', '');
+      this.imgInfo.imgPlayerImgViewEl.setAttribute('alt', '');
+    }
+    this.imgGlobalStatus.fullScreen = false;
+  }
+  //endregion
+
+  //region ================== events ========================
+  protected addOrRemoveEvents = (matchedImg: ImgCto, isAdd: boolean) => {
+    if (isAdd) {
+      if (!this.imgGlobalStatus.popup) {
+        this.doc.addEventListener('keydown', this.triggerKeydown);
+        this.doc.addEventListener('keyup', this.triggerKeyup);
+      }
+      if (this.isNormalMode()) {
+        // click event: hide container view
+        this.imgInfo.oitContainerEl.addEventListener('click', this.closeContainerView);
+      }
+      matchedImg.imgViewEl.addEventListener('mouseenter', this.mouseenterImgView);
+      matchedImg.imgViewEl.addEventListener('mouseleave', this.mouseleaveImgView);
+      // drag the image via mouse
+      matchedImg.imgViewEl.addEventListener('mousedown', this.mousedownImgView);
+      matchedImg.imgViewEl.addEventListener('mouseup', this.mouseupImgView);
+      // zoom the image via mouse wheel
+      matchedImg.imgViewEl.addEventListener('mousewheel', this.mousewheelViewContainer, {passive: true});
+    } else {
+      if (!this.imgGlobalStatus.popup) {
+        this.doc.removeEventListener('keydown', this.triggerKeydown);
+        this.doc.removeEventListener('keyup', this.triggerKeyup);
+
+        if (this.imgGlobalStatus.clickTimer) {
+          clearTimeout(this.imgGlobalStatus.clickTimer);
+          this.imgGlobalStatus.clickTimer = null;
+          this.imgGlobalStatus.clickCount = 0;
+        }
+      }
+      if (!this.isPinMode()) {
+        this.imgInfo.oitContainerEl.removeEventListener('click', this.closeContainerView);
+      }
+      matchedImg.imgViewEl.removeEventListener('mouseenter', this.mouseenterImgView);
+      matchedImg.imgViewEl.removeEventListener('mouseleave', this.mouseleaveImgView);
+      matchedImg.imgViewEl.removeEventListener('mousedown', this.mousedownImgView);
+      matchedImg.imgViewEl.removeEventListener('mouseup', this.mouseupImgView);
+      matchedImg.imgViewEl.removeEventListener('mousewheel', this.mousewheelViewContainer);
+      if (matchedImg.refreshImgInterval) {
+        clearInterval(matchedImg.refreshImgInterval);
+        matchedImg.refreshImgInterval = null;
+      }
+    }
+  }
+
+  protected triggerKeyup = (event: KeyboardEvent) => {
+    // console.log('keyup', event, event.key);
+    const key = event.key;
+    if (!key) return;
+    if (!('Escape' === key)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    switch (key) {
+      case 'Escape':
+        // close full screen, hide container view
+        this.imgGlobalStatus.fullScreen ? this.closePlayerImg() : this.closeContainerView();
+        break;
+      case 'ArrowUp':
+        this.imgGlobalStatus.arrowUp = false;
+        break;
+      case 'ArrowDown':
+        this.imgGlobalStatus.arrowDown = false;
+        break;
+      case 'ArrowLeft':
+        this.imgGlobalStatus.arrowLeft = false;
+        // switch to the previous image on the gallery navBar
+        this.switchImageOnGalleryNavBar(event, false);
+        break;
+      case 'ArrowRight':
+        this.imgGlobalStatus.arrowRight = false;
+        // switch to the next image on the gallery navBar
+        this.switchImageOnGalleryNavBar(event, true);
+        break;
+      default:
+        break
+    }
+  }
+
+  /**
+   * move the image by keyboard
+   * @param event
+   */
+  protected triggerKeydown = (event: KeyboardEvent) => {
+    //console.log('keydown', event, event.key, this.imgStatus);
+    if (this.isPinMode()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (this.imgGlobalStatus.arrowUp && this.imgGlobalStatus.arrowLeft) {
+      this.moveImgViewByHotkey(event, 'UP_LEFT');
+      return;
+    } else if (this.imgGlobalStatus.arrowUp && this.imgGlobalStatus.arrowRight) {
+      this.moveImgViewByHotkey(event, 'UP_RIGHT');
+      return;
+    } else if (this.imgGlobalStatus.arrowDown && this.imgGlobalStatus.arrowLeft) {
+      this.moveImgViewByHotkey(event, 'DOWN_LEFT');
+      return;
+    } else if (this.imgGlobalStatus.arrowDown && this.imgGlobalStatus.arrowRight) {
+      this.moveImgViewByHotkey(event, 'DOWN_RIGHT');
+      return;
+    }
+    switch (event.key) {
+      case 'ArrowUp':
+        this.imgGlobalStatus.arrowUp = true;
+        this.moveImgViewByHotkey(event, 'UP');
+        break;
+      case 'ArrowDown':
+        this.imgGlobalStatus.arrowDown = true;
+        this.moveImgViewByHotkey(event, 'DOWN');
+        break;
+      case 'ArrowLeft':
+        this.imgGlobalStatus.arrowLeft = true;
+        this.moveImgViewByHotkey(event, 'LEFT');
+        break;
+      case 'ArrowRight':
+        this.imgGlobalStatus.arrowRight = true;
+        this.moveImgViewByHotkey(event, 'RIGHT');
+        break;
+      default:
+        break
+    }
+  }
+
+  protected moveImgViewByHotkey = (event: KeyboardEvent, orientation: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT' | 'UP_LEFT' | 'UP_RIGHT' | 'DOWN_LEFT' | 'DOWN_RIGHT') => {
+    if (!orientation || !this.imgGlobalStatus.popup || !this.checkHotkeySettings(event, this.plugin.settings.moveTheImageHotkey))
+      return;
+    switch (orientation) {
+      case 'UP':
+        this.mousemoveImgView(null, {offsetX: 0, offsetY: -this.plugin.settings.imageMoveSpeed});
+        break;
+      case 'DOWN':
+        this.mousemoveImgView(null, {offsetX: 0, offsetY: this.plugin.settings.imageMoveSpeed});
+        break;
+      case 'LEFT':
+        this.mousemoveImgView(null, {offsetX: -this.plugin.settings.imageMoveSpeed, offsetY: 0});
+        break;
+      case 'RIGHT':
+        this.mousemoveImgView(null, {offsetX: this.plugin.settings.imageMoveSpeed, offsetY: 0});
+        break;
+      case 'UP_LEFT':
+        this.mousemoveImgView(null, {
+          offsetX: -this.plugin.settings.imageMoveSpeed,
+          offsetY: -this.plugin.settings.imageMoveSpeed
+        });
+        break;
+      case 'UP_RIGHT':
+        this.mousemoveImgView(null, {
+          offsetX: this.plugin.settings.imageMoveSpeed,
+          offsetY: -this.plugin.settings.imageMoveSpeed
+        });
+        break;
+      case 'DOWN_LEFT':
+        this.mousemoveImgView(null, {
+          offsetX: -this.plugin.settings.imageMoveSpeed,
+          offsetY: this.plugin.settings.imageMoveSpeed
+        });
+        break;
+      case 'DOWN_RIGHT':
+        this.mousemoveImgView(null, {
+          offsetX: this.plugin.settings.imageMoveSpeed,
+          offsetY: this.plugin.settings.imageMoveSpeed
+        });
+        break;
+      default:
+        break;
+    }
+  }
+
+  public checkHotkeySettings = (event: KeyboardEvent | MouseEvent, hotkey: string): boolean => {
+    // console.log("[oit] checkHotkeySettings: ", event.ctrlKey, event.altKey, event.shiftKey)
+    switch (hotkey) {
+      case "NONE":
+        return !event.ctrlKey && !event.altKey && !event.shiftKey;
+      case "CTRL":
+        return event.ctrlKey && !event.altKey && !event.shiftKey;
+      case "ALT":
+        return !event.ctrlKey && event.altKey && !event.shiftKey;
+      case "SHIFT":
+        return !event.ctrlKey && !event.altKey && event.shiftKey;
+      case "CTRL_ALT":
+        return event.ctrlKey && event.altKey && !event.shiftKey;
+      case "CTRL_SHIFT":
+        return event.ctrlKey && !event.altKey && event.shiftKey;
+      case "SHIFT_ALT":
+        return !event.ctrlKey && event.altKey && event.shiftKey;
+      case "CTRL_SHIFT_ALT":
+        return event.ctrlKey && event.altKey && event.shiftKey;
+    }
+    return false;
+  }
+
+  protected mouseenterImgView = (event: MouseEvent) => {
+    this.resetClickTimer();
+    event.stopPropagation();
+    event.preventDefault();
+    this.getAndUpdateActiveImg(event);
+    // console.log('mouseenterImgView', event, this.imgGlobalStatus.activeImg);
+  }
+
+  protected mousedownImgView = (event: MouseEvent) => {
+    // console.log('mousedownImgView', event, this.imgGlobalStatus.activeImg, event.button);
+    event.stopPropagation();
+    event.preventDefault();
+    const activeImg = this.getAndUpdateActiveImg(event);
+    if (!activeImg) return;
+    if (0 == event.button) { // left click
+      this.setClickTimer(activeImg);
+      this.setActiveImgZIndex(activeImg);
+      this.imgGlobalStatus.dragging = true;
+      // 鼠标相对于图片的位置
+      activeImg.moveX = activeImg.imgViewEl.offsetLeft - event.clientX;
+      activeImg.moveY = activeImg.imgViewEl.offsetTop - event.clientY;
+      // 鼠标按下时持续触发/移动事件
+      activeImg.imgViewEl.onmousemove = this.mousemoveImgView;
+    }
+  }
+
+  /**
+   * move the image by mouse or keyboard
+   * @param event
+   * @param offsetSize
+   */
+  protected mousemoveImgView = (event: MouseEvent, offsetSize?: OffsetSizeIto) => {
+    // console.log('mousemoveImgView', event, this.imgGlobalStatus.activeImg);
+    const activeImg = this.imgGlobalStatus.activeImg;
+    if (!activeImg) return;
+    if (event) {
+      if (!this.imgGlobalStatus.dragging) return;
+      // drag via mouse cursor (Both Mode)
+      activeImg.left = event.clientX + activeImg.moveX;
+      activeImg.top = event.clientY + activeImg.moveY;
+    } else if (offsetSize) {
+      // move by arrow keys (Normal Mode)
+      activeImg.left += offsetSize.offsetX;
+      activeImg.top += offsetSize.offsetY;
+    } else {
+      return;
+    }
+    // move the image
+    activeImg.imgViewEl.style.setProperty('margin-left', activeImg.left + 'px', 'important');
+    activeImg.imgViewEl.style.setProperty('margin-top', activeImg.top + 'px', 'important');
+  }
+
+  protected mouseupImgView = (event: MouseEvent) => {
+    // console.log('mouseupImgView', event, this.imgGlobalStatus.activeImg);
+    this.imgGlobalStatus.dragging = false;
+    event.preventDefault();
+    event.stopPropagation();
+    const activeImg = this.imgGlobalStatus.activeImg;
+    if (activeImg) {
+      activeImg.imgViewEl.onmousemove = null;
+      if (2 == event.button) { // right click
+        this.menuView?.show(event, activeImg);
+      }
+    }
+  }
+
+  protected mouseleaveImgView = (event: MouseEvent) => {
+    // console.log('mouseleaveImgView', event, this.imgGlobalStatus.activeImg, '>>> set null');
+    this.imgGlobalStatus.dragging = false;
+    this.resetClickTimer();
+    event.preventDefault();
+    event.stopPropagation();
+    const activeImg = this.imgGlobalStatus.activeImg;
+    if (activeImg) {
+      activeImg.imgViewEl.onmousemove = null;
+      this.setActiveImgForMouseEvent(null); // for pin mode
+    }
+  }
+
+  private setClickTimer = (activeImg?: ImgCto) => {
+    ++this.imgGlobalStatus.clickCount;
+    clearTimeout(this.imgGlobalStatus.clickTimer);
+    this.imgGlobalStatus.clickTimer = setTimeout(() => {
+      const clickCount = this.imgGlobalStatus.clickCount;
+      this.resetClickTimer();
+      if (2 === clickCount) { // double click
+        if (!activeImg) activeImg = this.imgGlobalStatus.activeImg;
+        // console.log('mousedownImgView: double click...', activeImg.index);
+        this.clickImgToolbar(null, this.plugin.settings.doubleClickToolbar, activeImg);
+      }
+    }, 200);
+  }
+
+  private resetClickTimer = () => {
+    this.imgGlobalStatus.clickTimer = null;
+    this.imgGlobalStatus.clickCount = 0;
+  }
+
+  private getAndUpdateActiveImg = (event: MouseEvent | KeyboardEvent): ImgCto => {
+    const targetEl = (<HTMLImageElement>event.target);
+    let index: string;
+    if (!targetEl || !(index = targetEl.dataset.index)) return;
+    const activeImg: ImgCto = this.imgInfo.imgList[parseInt(index)];
+    if (activeImg && (!this.imgGlobalStatus.activeImg || activeImg.index !== this.imgGlobalStatus.activeImg.index)) {
+      this.setActiveImgForMouseEvent(activeImg); // update activeImg
+    }
+    // console.log('getAndUpdateActiveImg: ', activeImg)
+    return activeImg;
+  }
+
+  protected mousewheelViewContainer = (event: WheelEvent) => {
+    // event.preventDefault();
+    event.stopPropagation();
+    // @ts-ignore
+    this.zoomAndRender(0 < event.wheelDelta ? 0.1 : -0.1, event);
+  }
+
+  protected zoomAndRender = (ratio: number, event?: WheelEvent, actualSize?: boolean, activeImg?: ImgCto) => {
+    if (!activeImg) {
+      activeImg = this.imgGlobalStatus.activeImg;
+    }
+    let activeImgViewEl: HTMLImageElement;
+    if (!activeImg || !(activeImgViewEl = activeImg.imgViewEl)) return;
+    let offsetSize: OffsetSizeIto = {offsetX: 0, offsetY: 0};
+    if (event) {
+      offsetSize.offsetX = event.offsetX;
+      offsetSize.offsetY = event.offsetY;
+    } else {
+      offsetSize.offsetX = activeImg.curWidth / 2;
+      offsetSize.offsetY = activeImg.curHeight / 2;
+    }
+    const zoomData: ImgCto = ImgUtil.zoom(ratio, activeImg, offsetSize, actualSize);
+    this.renderImgTip(activeImg);
+    activeImgViewEl.setAttribute('width', zoomData.curWidth + 'px');
+    activeImgViewEl.style.setProperty('margin-top', zoomData.top + 'px', 'important');
+    activeImgViewEl.style.setProperty('margin-left', zoomData.left + 'px', 'important');
+  }
+
+  public clickImgToolbar = (event: MouseEvent, targetElClass?: string, activeImg?: ImgCto): void => {
+    if (!targetElClass && !activeImg) {
+      if (!event) return;
+      // comes from clicking toolbar
+      targetElClass = (<HTMLElement>event.target).className;
+      activeImg = this.imgGlobalStatus.activeImg;
+    }
+    switch (targetElClass) {
+      case 'toolbar_zoom_to_100':
+        this.zoomAndRender(null, null, true, activeImg);
+        break;
+      case 'toolbar_zoom_in':
+        this.zoomAndRender(0.1);
+        break;
+      case 'toolbar_zoom_out':
+        this.zoomAndRender(-0.1);
+        break;
+      case 'toolbar_full_screen':
+        this.showPlayerImg(activeImg);
+        break;
+      case 'toolbar_refresh':
+        this.refreshImg(activeImg);
+        break;
+      case 'toolbar_rotate_left':
+        activeImg.rotate -= 90;
+        ImgUtil.transform(activeImg);
+        break;
+      case 'toolbar_rotate_right':
+        activeImg.rotate += 90;
+        ImgUtil.transform(activeImg);
+        break;
+      case 'toolbar_scale_x':
+        activeImg.scaleX = !activeImg.scaleX;
+        ImgUtil.transform(activeImg);
+        break;
+      case 'toolbar_scale_y':
+        activeImg.scaleY = !activeImg.scaleY;
+        ImgUtil.transform(activeImg);
+        break;
+      case 'toolbar_invert_color':
+        activeImg.invertColor = !activeImg.invertColor;
+        ImgUtil.invertImgColor(activeImg.imgViewEl, activeImg.invertColor);
+        break;
+      case 'toolbar_copy':
+        ImgUtil.copyImage(activeImg.imgViewEl, activeImg.curWidth, activeImg.curHeight);
+        break;
+      case 'toolbar_close':
+        this.closeContainerView(event, activeImg);
+        break
+      default:
+        break;
+    }
+  }
+  //endregion
+
+}
+
+
+================================================
+File: /src/ui/galleryNavbarView.ts
+================================================
+import {Md5} from "md5-typescript";
+import {MarkdownView, TFile} from "obsidian";
+import ImageToolkitPlugin from "src/main";
+import {md5Img, parseActiveViewData} from "src/util/markdowParse";
+import {NormalContainerView} from "./container/normalContainer.view";
+import {GalleryImgCacheCto, GalleryImgCto} from "../model/galleryNavbarTo";
+import {SettingsIto} from "../model/settings.to";
+
+export class GalleryNavbarView {
+  private readonly plugin: ImageToolkitPlugin;
+  private readonly settings: SettingsIto;
+  private readonly mainContainerView: NormalContainerView;
+
+  // whether to display gallery navbar
+  private state: boolean = false;
+
+  private galleryNavbarEl: HTMLDivElement = null;
+  private galleryListEl: HTMLElement = null;
+
+  private galleryIsMousingDown: boolean = false;
+  private galleryMouseDownClientX: number = 0;
+  private galleryTranslateX: number = 0;
+  private mouseDownTime: number;
+
+  private static GALLERY_IMG_CACHE = new Map();
+
+  private readonly CACHE_LIMIT: number = 10;
+  private readonly CLICK_TIME: number = 150;
+
+  constructor(mainContainerView: NormalContainerView, plugin: ImageToolkitPlugin) {
+    this.mainContainerView = mainContainerView;
+    this.plugin = plugin;
+    this.settings = plugin.settings;
+  }
+
+  public renderGalleryImg = async (imgFooterEl: HTMLElement) => {
+    if (this.state) return;
+    // get all of images on the current editor
+    const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!activeView
+      || 'markdown' !== activeView.getViewType()
+      // modal-container: community plugin, flashcards (Space Repetition)
+      || 0 < this.mainContainerView.getDoc().getElementsByClassName('modal-container').length) {
+      if (this.galleryNavbarEl) this.galleryNavbarEl.hidden = true;
+      if (this.galleryListEl) this.galleryListEl.innerHTML = '';
+      return;
+    }
+    // <div class="gallery-navbar"> <ul class="gallery-list"> <li> <img src='' alt=''> </li> <li...> <ul> </div>
+    this.initGalleryNavbar(imgFooterEl);
+
+    const activeFile: TFile = activeView.file;
+    let galleryImg: GalleryImgCacheCto = this.getGalleryImgCache(activeFile);
+    // let hitCache: boolean = true;
+    if (!galleryImg) {
+      // hitCache = false;
+      galleryImg = parseActiveViewData(this.plugin, activeView.data?.split('\n'), activeFile);
+      this.setGalleryImgCache(galleryImg);
+    }
+    // console.log('oit-gallery-navbar: ' + (hitCache ? 'hit cache' : 'miss cache') + '!', galleryImg);
+
+    const imgList: Array<GalleryImgCto> = galleryImg.galleryImgList;
+    const imgContextHash: string[] = this.getTargetImgContextHash(this.mainContainerView.getLastClickedImgEl(), activeView.containerEl, this.plugin.imgSelector);
+    let liEl: HTMLLIElement, imgEl, liElActive: HTMLLIElement;
+    let imgListEl: Array<HTMLImageElement> = new Array<HTMLImageElement>();
+    let targetImageIdx = -1, targetRealIdx = 0;
+    let isAddGalleryActive: boolean = false;
+    let prevHash: string, nextHash: string, dataIndex: string;
+    const viewImageWithLink: boolean = this.plugin.settings.viewImageWithLink;
+    for (let i = 0, len = imgList.length; i < len; i++) {
+      const img = imgList[i];
+      if (!viewImageWithLink && img.link) continue;
+      // <li> <img class='gallery-img' src='' alt=''> </li>
+      this.galleryListEl.append(liEl = createEl('li'));
+      liEl.append(imgEl = createEl('img'));
+      imgEl.addClass('gallery-img', 'oit-img');
+      imgEl.setAttr('alt', img.alt);
+      imgEl.setAttr('src', img.src);
+      imgListEl.push(imgEl);
+      this.mainContainerView.setImgViewDefaultBackground(imgEl);
+      // find the target image (which image is just clicked)
+      if (!imgContextHash || isAddGalleryActive) continue;
+      if (imgContextHash[1] == img.hash) {
+        if (0 > targetImageIdx) {
+          targetImageIdx = i;
+          liElActive = liEl;
+          targetRealIdx = imgListEl.length;
+        }
+        if (0 == i) {
+          prevHash = null;
+          nextHash = 1 < len ? imgList[i + 1].hash : null;
+        } else if (len - 1 == i) {
+          prevHash = imgList[i - 1].hash;
+          nextHash = null;
+        } else {
+          prevHash = imgList[i - 1].hash;
+          nextHash = imgList[i + 1].hash;
+        }
+        if (imgContextHash[0] == prevHash && imgContextHash[2] == nextHash) {
+          isAddGalleryActive = true;
+          liElActive = liEl;
+        }
+      }
+    }
+
+    const realTotalNum = imgListEl.length;
+    this.mainContainerView.renderImgTitle(null, '[' + targetRealIdx + '/' + realTotalNum + ']');
+    imgListEl.forEach((value, index) => {
+      value.dataset.index = '[' + (index + 1) + '/' + realTotalNum + ']';
+    });
+
+    if (0 <= targetImageIdx) {
+      if (liElActive) {
+        liElActive.addClass('gallery-active');
+        if (this.settings.galleryImgBorderActive) {
+          liElActive.addClass('img-border-active');
+          liElActive.style.setProperty('border-color', this.settings.galleryImgBorderActiveColor);
+        }
+      }
+
+      this.galleryTranslateX = (this.mainContainerView.getDoc().documentElement.clientWidth || this.mainContainerView.getDoc().body.clientWidth) / 2.5 - targetImageIdx * 52;
+      this.galleryListEl.style.transform = 'translateX(' + this.galleryTranslateX + 'px)';
+    }
+  }
+
+  private initDefaultData = () => {
+    this.galleryMouseDownClientX = 0;
+    this.galleryTranslateX = 0;
+    if (this.galleryListEl) {
+      this.galleryListEl.style.transform = 'translateX(0px)';
+      // remove all childs (li) of gallery-list
+      this.galleryListEl.innerHTML = '';
+    }
+  }
+
+  private initGalleryNavbar = (imgFooterEl: HTMLElement) => {
+    // <div class="gallery-navbar">
+    if (!this.galleryNavbarEl) {
+      // imgInfo.imgFooterEl.append(galleryNavbarEl = createDiv());
+      imgFooterEl.append(this.galleryNavbarEl = createDiv());
+      this.galleryNavbarEl.addClass('gallery-navbar');
+      this.galleryNavbarEl.onmouseover = () => {
+        this.galleryNavbarEl.style.setProperty('background-color', this.settings.galleryNavbarHoverColor);
+      }
+      this.galleryNavbarEl.onmouseout = () => {
+        this.galleryNavbarEl.style.setProperty('background-color', this.settings.galleryNavbarDefaultColor);
+      }
+      // add events
+      this.galleryNavbarEl.addEventListener('mousedown', this.mouseDownGallery);
+      this.galleryNavbarEl.addEventListener('mousemove', this.mouseMoveGallery);
+      this.galleryNavbarEl.addEventListener('mouseup', this.mouseUpGallery);
+      this.galleryNavbarEl.addEventListener('mouseleave', this.mouseLeaveGallery);
+    }
+    this.galleryNavbarEl.style.setProperty('background-color', this.settings.galleryNavbarDefaultColor);
+    if (!this.galleryListEl) {
+      this.galleryNavbarEl.append(this.galleryListEl = createEl('ul')); // <ul class="gallery-list">
+      this.galleryListEl.addClass('gallery-list');
+    }
+    this.initDefaultData();
+    this.galleryNavbarEl.hidden = false; // display 'gallery-navbar'
+    this.state = true;
+  }
+
+  public closeGalleryNavbar = () => {
+    if (!this.state) return;
+    this.galleryNavbarEl.hidden = true; // hide 'gallery-navbar'
+    this.state = false;
+    this.initDefaultData();
+  }
+
+  public remove = () => {
+    this.state = false;
+
+    this.galleryNavbarEl?.remove();
+    this.galleryListEl?.remove();
+
+    this.galleryNavbarEl = null;
+    this.galleryListEl = null;
+
+    this.galleryIsMousingDown = false;
+    this.galleryMouseDownClientX = 0;
+    this.galleryTranslateX = 0;
+    this.mouseDownTime = null;
+
+    GalleryNavbarView.GALLERY_IMG_CACHE = new Map();
+
+    this.initDefaultData();
+  }
+
+  private getTargetImgContextHash = (targetImgEl: HTMLImageElement, containerEl: HTMLElement, imageSelector: string): string[] => {
+    let imgEl: HTMLImageElement;
+    let targetImgHash: string = null;
+    let targetIdx = -1;
+    const imgs: NodeListOf<HTMLImageElement> = containerEl.querySelectorAll(imageSelector);
+    // console.log('IMAGE_SELECTOR>>', imageSelector, imgs);
+    const len = imgs.length;
+    for (let i = 0; i < len; i++) {
+      if ((imgEl = imgs[i])) {
+        if ('1' == imgEl.getAttribute('data-oit-target')) {
+          targetIdx = i;
+          targetImgHash = md5Img(imgEl.alt, imgEl.src);
+          break;
+        }
+      }
+    }
+    if (0 > targetIdx) targetImgHash = md5Img(targetImgEl.alt, targetImgEl.src);
+    let prevHash: string, nextHash: string;
+    if (0 == targetIdx) {
+      prevHash = null;
+      nextHash = 1 < len ? md5Img(imgs[1].alt, imgs[1].src) : null;
+    } else if (len - 1 == targetIdx) {
+      prevHash = md5Img(imgs[targetIdx - 1].alt, imgs[targetIdx - 1].src);
+      nextHash = null;
+    } else {
+      prevHash = md5Img(imgs[targetIdx - 1].alt, imgs[targetIdx - 1].src);
+      nextHash = md5Img(imgs[targetIdx + 1].alt, imgs[targetIdx + 1].src);
+    }
+    return [prevHash, targetImgHash, nextHash];
+  }
+
+  private activateImage = (liEl: HTMLLIElement | HTMLElement, imgEL?: HTMLImageElement) => {
+    if (!liEl || 'LI' !== liEl.tagName) return;
+    if (!imgEL) {
+      const imgELList: HTMLCollectionOf<HTMLImageElement> = liEl.getElementsByTagName('img');
+      if (imgELList && 0 < imgELList.length) {
+        imgEL = imgELList[0];
+      }
+    }
+    if (imgEL) {
+      const activeImg = this.mainContainerView.getActiveImg();
+      this.mainContainerView.initDefaultData(activeImg, imgEL.style);
+      this.mainContainerView.refreshImg(activeImg, imgEL.src, imgEL.alt || '', imgEL.dataset.index);
+    }
+
+    liEl.addClass('gallery-active');
+    if (this.settings.galleryImgBorderActive) {
+      liEl.addClass('img-border-active');
+      liEl.style.setProperty('border-color', this.settings.galleryImgBorderActiveColor);
+    }
+  }
+
+  private deactivateImage = (liEl: HTMLLIElement) => {
+    if (!liEl) return;
+    liEl.removeClass('gallery-active');
+    if (liEl.hasClass('img-border-active')) {
+      liEl.removeClass('img-border-active');
+      liEl.style.removeProperty('border-color');
+    }
+  }
+
+  private clickGalleryImg = (event: MouseEvent) => {
+    const targetEl = (<HTMLImageElement>event.target);
+    if (!targetEl || 'IMG' !== targetEl.tagName) return;
+
+    if (this.galleryListEl) {
+      const liElList: HTMLCollectionOf<Element> = this.galleryListEl.getElementsByClassName('gallery-active');
+      for (let i = 0, len = liElList.length; i < len; i++) {
+        this.deactivateImage(<HTMLLIElement>liElList[i]);
+      }
+    }
+
+    this.activateImage(targetEl.parentElement, targetEl);
+  }
+
+  /**
+   * switch the image on the gallery navbar
+   * @param next true: switch to the next image; false: switch to the previous image
+   */
+  public switchImage = (next: boolean) => {
+    if (!this.state || !this.galleryListEl) return;
+    const liElList: HTMLCollectionOf<HTMLLIElement> = this.galleryListEl.getElementsByTagName('li');
+    if (!liElList || 0 >= liElList.length) return;
+    let liEl: HTMLLIElement;
+    let toSwitchIdx: number = -1;
+    for (let i = 0, len = liElList.length; i < len; i++) {
+      if (!(liEl = liElList[i])) continue;
+      if (liEl.hasClass('gallery-active')) {
+        toSwitchIdx = next ? (len <= (i + 1) ? 0 : i + 1) : (0 == i ? len - 1 : i - 1);
+        this.deactivateImage(liEl);
+        break;
+      }
+    }
+    if (0 >= toSwitchIdx) {
+      toSwitchIdx = 0;
+    }
+    this.activateImage(liElList[toSwitchIdx]);
+  }
+
+  private mouseDownGallery = (event: MouseEvent) => {
+    // console.log('mouse Down Gallery...');
+    event.preventDefault();
+    event.stopPropagation();
+    this.mouseDownTime = new Date().getTime();
+    this.galleryIsMousingDown = true;
+    this.galleryMouseDownClientX = event.clientX;
+  }
+
+  private mouseMoveGallery = (event: MouseEvent) => {
+    // console.log('mouse Move Gallery...');
+    event.preventDefault();
+    event.stopPropagation();
+    if (!this.galleryIsMousingDown) return;
+    let moveDistance = event.clientX - this.galleryMouseDownClientX;
+    if (4 > Math.abs(moveDistance)) return;
+    this.galleryMouseDownClientX = event.clientX;
+    this.galleryTranslateX += moveDistance;
+
+    const windowWidth = this.mainContainerView.getDoc().documentElement.clientWidth || this.mainContainerView.getDoc().body.clientWidth;
+    const imgLiWidth = (this.galleryListEl.childElementCount - 1) * 52;
+    // console.log('move...', 'windowWidth=' + windowWidth, 'galleryTranslateX=' + galleryTranslateX, 'li count=' + imgInfo.galleryList.childElementCount);
+    if (this.galleryTranslateX + 50 >= windowWidth) this.galleryTranslateX = windowWidth - 50;
+    if (0 > this.galleryTranslateX + imgLiWidth) this.galleryTranslateX = -imgLiWidth;
+
+    this.galleryListEl.style.transform = 'translateX(' + this.galleryTranslateX + 'px)';
+  }
+
+  private mouseUpGallery = (event: MouseEvent) => {
+    // console.log('mouse Up Gallery>>>', event.target);
+    event.preventDefault();
+    event.stopPropagation();
+    this.galleryIsMousingDown = false;
+    if (!this.mouseDownTime || this.CLICK_TIME > new Date().getTime() - this.mouseDownTime) {
+      this.clickGalleryImg(event);
+    }
+    this.mouseDownTime = null;
+  }
+
+  private mouseLeaveGallery = (event: MouseEvent) => {
+    // console.log('mouse Leave Gallery>>>', event.target);
+    event.preventDefault();
+    event.stopPropagation();
+    this.galleryIsMousingDown = false;
+    this.mouseDownTime = null;
+  }
+
+  private getGalleryImgCache = (file: TFile): GalleryImgCacheCto => {
+    if (!file) return null;
+    const md5File = this.md5File(file.path, file.stat.ctime);
+    if (!md5File) return null;
+    const galleryImgCache: GalleryImgCacheCto = GalleryNavbarView.GALLERY_IMG_CACHE.get(md5File);
+    if (galleryImgCache && file.stat.mtime !== galleryImgCache.file.mtime) {
+      GalleryNavbarView.GALLERY_IMG_CACHE.delete(md5File);
+      return null;
+    }
+    return galleryImgCache;
+  }
+
+  private setGalleryImgCache = (galleryImg: GalleryImgCacheCto) => {
+    const md5File = this.md5File(galleryImg.file.path, galleryImg.file.ctime);
+    if (!md5File) return;
+    this.trimGalleryImgCache();
+    GalleryNavbarView.GALLERY_IMG_CACHE.set(md5File, galleryImg);
+  }
+
+  private trimGalleryImgCache = () => {
+    if (GalleryNavbarView.GALLERY_IMG_CACHE.size < this.CACHE_LIMIT) return;
+    let earliestMtime: number, earliestKey: string;
+    GalleryNavbarView.GALLERY_IMG_CACHE.forEach((value: GalleryImgCacheCto, key: string) => {
+      if (!earliestMtime) {
+        earliestMtime = value.mtime;
+        earliestKey = key;
+      } else {
+        if (earliestMtime > value.mtime) {
+          earliestMtime = value.mtime;
+          earliestKey = key;
+        }
+      }
+    });
+    if (earliestKey) {
+      GalleryNavbarView.GALLERY_IMG_CACHE.delete(earliestKey);
+    }
+  }
+
+  private md5File = (path: string, ctime: number) => {
+    if (!path || !ctime) return;
+    return Md5.init(path + '_' + ctime);
+  }
+}
+
+
+================================================
+File: /src/util/markdowParse.ts
+================================================
+import {Md5} from 'md5-typescript';
+import {TFile} from 'obsidian';
+import ImageToolkitPlugin from 'src/main';
+import {GalleryImgCacheCto, GalleryImgCto} from "../model/galleryNavbarTo";
+import {FileCto} from "../model/commonTo";
+
+/* // const imgList: Array<GalleryImg> = parseMarkDown(plugin, activeView.sourceMode?.cmEditor, activeView.file.path);
+export const parseMarkDown = (plugin: ImageToolkitPlugin, cm: CodeMirror.Editor, filePath: string) => {
+    let line, lineText;
+    for (let i = 0, lastLine = cm.lastLine(); i <= lastLine; i++) {
+        if (!(line = cm.lineInfo(i))) continue;
+        if (!(lineText = line.text)) continue;
+        console.debug((i + 1) + ' line: ' + lineText);
+    }
+} */
+
+export const parseActiveViewData = (plugin: ImageToolkitPlugin, lines: string[], file: TFile): GalleryImgCacheCto => {
+  if (!lines || 0 >= lines.length) return null;
+  let lineText: string;
+  let isCodeArea: boolean = false;
+  let textArr: Array<string>;
+  const imgList: Array<GalleryImgCto> = new Array<GalleryImgCto>();
+  for (let i = 0, len = lines.length; i < len; i++) {
+    if (!(lineText = lines[i])) continue;
+    // console.log((i + 1) + ' line: ' + lineText);
+    if (lineText.startsWith('```')) {
+      isCodeArea = !isCodeArea;
+      continue;
+    }
+    if (isCodeArea) continue;
+    if (textArr = getNonCodeAreaTexts(lineText)) {
+      for (const text of textArr) {
+        extractImage(text, imgList);
+      }
+    } else {
+      extractImage(lineText, imgList);
+    }
+  }
+  const filePath: string = file.path;
+  for (let i = 0, len = imgList.length; i < len; i++) {
+    const img = imgList[i];
+    if (img.convert) {
+      const imageFile = plugin.app.metadataCache.getFirstLinkpathDest(decodeURIComponent(img.src), filePath);
+      img.src = imageFile ? plugin.app.vault.getResourcePath(imageFile) : '';
+    }
+    img.hash = md5Img(img.alt, img.src);
+    img.match = null;
+    img.name = null;
+  }
+  return new GalleryImgCacheCto(new FileCto(file.path, file.stat.ctime, file.stat.mtime), imgList, new Date().getTime());
+}
+
+const getNonCodeAreaTexts = (lineText: string): string[] => {
+  let textArr: string[] = [];
+  const idx1 = lineText.indexOf('`');
+  if (0 > idx1) return null;
+  const idx2 = lineText.lastIndexOf('`');
+  if (idx1 === idx2) return null;
+  if (idx1 > 0) textArr.push(lineText.substring(0, idx1));
+  if (lineText.length - 1 > idx2) textArr.push(lineText.substring(idx2 + 1));
+  return textArr;
+}
+
+const IMAGE_LINK_REGEX1 = /\[\s*?(!\[(.*?)\]\((.*?)\))\s*?\]\(.*?\)/; // 1-link: [ ![alt1|alt2|...|altn|width](src) ](https://...)
+// markdown: `![alt1|alt2|...|altn|width](src)` -> 1: alt (alt+width), 2: src
+const RE_MARKDOWN_IMAGE = /!\[(.*?)\]\(\s*(.*?\.(jpe?g|png|svg|gif|bmp|webp))\s*\)/i; // 1: ![alt1|alt2|...|altn|width](src)
+// const RE_MARKDOWN_IMAGE = /!\[(.*?)\]\(\s*(.*?)\s*\)/i; // 1: ![alt1|alt2|...|altn|width](src)
+const RE_IMGAGE = /.*?\.(jpe?g|png|svg|gif|bmp|webp)/i;
+const RE_IMGAGE_BASE64 = /data:image\/[^;]+;base64.*/i;
+const IMAGE_LINK_REGEX2 = /\[\s*?(!\[\[(.*?[jpe?g|png|gif|svg|bmp].*?)\]\])\s*?\]\(.*?\)/i; // 2-link: [ ![[src|alt1|alt2|width]] ](https://...)
+// RE_WIKILINK_IMAGE wikilink: `![[bird.png|alt1|alt2|2.1|50]]` -> 1: src+alt+width
+const RE_WIKILINK_IMAGE = /!\[\[(.*?\.(jpe?g|png|svg|gif|bmp|webp).*?)\]\]/i; // 2: ![[src|alt1|alt2|width]]
+
+const SRC_LINK_REGEX = /[a-z][a-z0-9+\-.]+:\/.*/i; // match link: http://, file://, app:// 
+const SRC_IMG_REGREX = /.*?\.jpe?g|png|gif|svg|bmp/i; // match image ext: .jpg/.jpeg/.png/.gif/.svg/.bmp
+
+const IMG_TAG_LINK_SRC_REGEX = /<a.*?(<img.*?src=[\'"](.*?)[\'"].*?\/?>).*?\/a>/i; // 3-a-img-src: <a> <img ... src=''/> </a>
+const IMG_TAG_SRC_REGEX = /<img.*?src=[\'"](.*?)[\'"].*?\/?>/i; // 3-img-src: <img ... src='' />
+const IMG_TAG_ALT_REGEX = /<img.*?alt=[\'"](.*?)[\'"].*?\/?>/i; // 3-img-alt: <img ... alt='' />
+const FULL_PATH_REGEX = /^[a-z]\:.*?[jpe?g|png|gif|svg|bmp]/i;
+
+const BLOCKQUOTE_PREFIX = `#^`;
+
+const IMG_MATCH_MIN_LEN: number = 7;
+
+const extractImage = (text: string, imgList: Array<GalleryImgCto>) => {
+  text = text.replace('\\|', '|');
+  
+  let img: GalleryImgCto;
+  if (!(img = matchImage1(text))) {
+    if (!(img = matchImage2(text))) {
+      if (!(img = matchImageTag(text))) {
+        return;
+      }
+    }
+  }
+  imgList.push(img);
+  if (img.match) {
+    const idx = img.match.index + img.match[0].length
+    if (idx > text.length - IMG_MATCH_MIN_LEN) return;
+    extractImage(text.substring(idx), imgList);
+  }
+}
+
+/**
+ * ![alt1|alt2|...|altn|width](src)
+ * @param text
+ * @returns
+ */
+const matchImage1 = (text: string): GalleryImgCto => {
+  let match: RegExpMatchArray = text.match(IMAGE_LINK_REGEX1); // 1-link: [ ![alt1|alt2|...|altn|width](src) ](https://...)
+  let link: boolean = false;
+  let alt: string, src: string;
+  if (match) {
+    link = true;
+    alt = match[2];
+    src = match[3];
+  } else {
+    match = text.match(RE_MARKDOWN_IMAGE); // 1: ![alt1|alt2|...|altn|width](src)
+    if (match) {
+      if (alt = match[1]) {
+        if (0 <= alt.indexOf('[') && 0 <= alt.indexOf(']')) return;
+      }
+      src = match[2];
+      if (src && src.startsWith(BLOCKQUOTE_PREFIX)) return;
+    }
+  }
+  if (!match) return null;
+  const img: GalleryImgCto = new GalleryImgCto();
+  img.link = link;
+  img.match = match;
+  img.alt = alt;
+  img.src = src;
+  let width: string;
+  if (img.src) {
+    if (SRC_LINK_REGEX.test(img.src)) { // 1.2: match link: http://, file://, app://local/
+      if (img.src.startsWith('file://')) {
+        img.src = img.src.replace(/^file:\/+/, 'app://local/');
+      }
+    } else if (SRC_IMG_REGREX.test(img.src)) { // 1.3: match image ext: .jpg/.jpeg/.png/.gif/.svg/.bmp
+      const srcArr = img.src.split('/');
+      if (srcArr && 0 < srcArr.length) {
+        img.name = srcArr[srcArr.length - 1];
+      }
+      img.convert = true;
+    }
+  }
+  const altArr = img.alt?.split('\|'); // match[1] = alt1|alt2|...|altn|width
+  if (altArr && 1 < altArr.length) {
+    if (/\d+/.test(width = altArr[altArr.length - 1])) {
+      img.alt = img.alt.substring(0, img.alt.length - width.length - 1);
+    }
+  }
+  return img;
+}
+
+/**
+ * ![[src|alt1|alt2|width]]
+ * @param text
+ * @returns
+ */
+const matchImage2 = (text: string): GalleryImgCto => {
+  let match: RegExpMatchArray = text.match(IMAGE_LINK_REGEX2); // 2-link: [ ![[src|alt1|alt2|width]] ](https://...)
+  let link: boolean = false;
+  let content: string;
+  if (match) {
+    link = true;
+    content = match[2];
+  } else {
+    match = text.match(RE_WIKILINK_IMAGE); // 2: ![[src|alt1|alt2|width]]
+    content = match ? match[1] : null;
+    if (content && content.startsWith(BLOCKQUOTE_PREFIX)) return;
+  }
+  if (!match) return null;
+  const img: GalleryImgCto = new GalleryImgCto();
+  img.link = link;
+  img.match = match;
+  let width: string;
+  const contentArr = content?.split('|');
+  if (contentArr && 0 < contentArr.length && (img.src = contentArr[0].trim())) {
+    const srcArr = img.src.split('/');
+    if (srcArr && 0 < srcArr.length) {
+      img.name = srcArr[srcArr.length - 1];
+    }
+    if (1 == contentArr.length) {
+      img.alt = img.src;
+    } else {
+      img.alt = '';
+      for (let i = 1; i < contentArr.length; i++) {
+        if (i == contentArr.length - 1 && /\d+/.test(width = contentArr[i])) break;
+        if (img.alt) img.alt += '|';
+        img.alt += contentArr[i];
+      }
+    }
+    img.convert = true;
+  }
+  return img;
+}
+
+const matchImageTag = (text: string): GalleryImgCto => {
+  let match: RegExpMatchArray = text.match(IMG_TAG_LINK_SRC_REGEX); // 3-a-img-src: <a> <img ... src=''/> </a>
+  let link: boolean = false;
+  if (match) {
+    link = true;
+  } else {
+    match = text.match(IMG_TAG_SRC_REGEX); // 3-img-src: <img ... src='' />
+  }
+  if (!match) return null;
+  const img: GalleryImgCto = new GalleryImgCto();
+  img.link = link;
+  img.match = match;
+  img.src = img.link ? match[2] : match[1];
+  if (img.src) {
+    if (img.src.startsWith('file://')) {
+      img.src = img.src.replace(/^file:\/+/, 'app://local/');
+    } else if (FULL_PATH_REGEX.test(img.src)) {
+      img.src = 'app://local/' + img.src;
+    }
+  }
+  const matchAlt = text.match(IMG_TAG_ALT_REGEX)
+  img.alt = matchAlt ? matchAlt[1] : '';
+  return img;
+}
+
+export const md5Img = (alt: string, src: string) => {
+  return Md5.init((alt ? alt : '') + '_' + src);
+}
+
+// ------------------------------------------------------------
+const extractImg = (lineText: string): GalleryImgCto => {
+  let match;
+  let matchFlag: boolean = false;
+  let alt: string, src: string, width: string, name: string;
+  let convert: boolean = false;
+  if (match = lineText.match(RE_MARKDOWN_IMAGE)) {  // 1: ![alt1|alt2|...|altn|width](src)
+    if (!(src = match[2])) return null;
+    if (SRC_LINK_REGEX.test(src)) { // 1.2: match link: http://, file://, app://local/
+      if (src.startsWith('file://')) {
+        src = src.replace(/^file:\/+/, 'app://local/');
+      }
+      matchFlag = true;
+    } else if (SRC_IMG_REGREX.test(src)) { // 1.3: match image ext: .jpg/.jpeg/.png/.gif/.svg/.bmp
+      const srcArr = src.split('/');
+      if (srcArr && 0 < srcArr.length) {
+        name = srcArr[srcArr.length - 1];
+      }
+      convert = true;
+      matchFlag = true;
+    }
+    const altArr = (alt = match[1])?.split('\|'); // match[1] = alt1|alt2|...|altn|width
+    if (altArr && 1 < altArr.length) {
+      if (/\d+/.test(width = altArr[altArr.length - 1])) {
+        alt = alt.substring(0, alt.length - width.length - 1);
+      }
+    }
+    // console.log('IMAGE_REGEX1: ', match, 'alt=' + alt, 'src=' + src);
+  } else if (match = lineText.match(RE_WIKILINK_IMAGE)) { // 2: ![[src|alt1|alt2|width]]
+    const contentArr = match[1]?.split('|');
+    if (contentArr && 0 < contentArr.length && (src = contentArr[0])) {
+      const srcArr = src.split('/');
+      if (srcArr && 0 < srcArr.length) {
+        name = srcArr[srcArr.length - 1];
+      }
+      if (1 == contentArr.length) {
+        alt = src;
+      } else {
+        alt = '';
+        for (let i = 1; i < contentArr.length; i++) {
+          if (i == contentArr.length - 1 && /\d+/.test(width = contentArr[i])) break;
+          if (alt) alt += '|';
+          alt += contentArr[i];
+        }
+      }
+      convert = true;
+      matchFlag = true;
+      // console.log('IMAGE_REGEX2: ', match, 'alt=' + alt, 'src=' + src);
+    }
+  } else if (match = lineText.match(IMG_TAG_SRC_REGEX)) { // 3: match img tag
+    if (src = match[1]) {
+      if (src.startsWith('file://')) {
+        src = src.replace(/^file:\/+/, 'app://local/');
+      } else if (FULL_PATH_REGEX.test(src)) {
+        src = 'app://local/' + src;
+      }
+      alt = (match = lineText.match(IMG_TAG_ALT_REGEX)) ? match[1] : '';
+      matchFlag = true;
+    }
+  }
+  return matchFlag ? {alt, src, name, convert} : null;
+}
+
+const getNoMatchImgLinkText = (lineText: string, textArr: Array<string>) => {
+  const match = matchImgLink(lineText);
+  if (!match) {
+    textArr.push(lineText);
+    return;
+  }
+  if (0 < match.index) {
+    textArr.push(lineText.substring(0, match.index));
+  }
+  const matchLen = match.index + 1 + match[0].length;
+  if (lineText.length - 5 <= matchLen) return;
+  getNoMatchImgLinkText(lineText.substring(matchLen - 1), textArr);
+}
+
+const matchImgLink = (lineText: string): RegExpMatchArray => {
+  let match: RegExpMatchArray;
+  // 1-link: [ ![alt1|alt2|...|altn|width](src) ](https://...)
+  if (match = lineText.match(IMAGE_LINK_REGEX1)) return match;
+  // 2-link: [ ![[src|alt1|alt2|width]] ](https://...)
+  if (match = lineText.match(IMAGE_LINK_REGEX2)) return match;
+  // 3-a-img-src: <a> <img ... src=''/> </a>
+  if (match = lineText.match(IMG_TAG_LINK_SRC_REGEX)) return match;
+  return null;
+}
+
+const parseAndExtractImg = (lineText: string, plugin: ImageToolkitPlugin, filePath: string) => {
+  let img: GalleryImgCto = extractImg(lineText);
+  if (img) {
+    if (img.convert) {
+      const imageFile = plugin.app.metadataCache.getFirstLinkpathDest(decodeURIComponent(img.src), filePath);
+      img.src = imageFile ? plugin.app.vault.getResourcePath(imageFile) : '';
+    }
+    const hash = md5Img(img.alt, img.src);
+    return {alt: img.alt, src: img.src, hash};
+  }
+  return null;
+}
+
+
+================================================
+File: /src/util/imgUtil.ts
+================================================
+import {Notice} from 'obsidian';
+import {t} from 'src/lang/helpers';
+import {IMG_VIEW_MIN, ZOOM_FACTOR} from '../conf/constants'
+import {ImgCto, ImgInfoIto} from "../model/imgTo";
+import {OffsetSizeIto} from "../model/commonTo";
+
+/**
+ * Image utility class
+ */
+export class ImgUtil {
+
+  public static calculateImgZoomSize = (realImg: HTMLImageElement, imgCto: ImgCto, windowWidth: number, windowHeight: number): ImgCto => {
+    if (!windowWidth) {
+      windowWidth = document.documentElement.clientWidth || document.body.clientWidth;
+    }
+    if (!windowHeight) {
+      windowHeight = (document.documentElement.clientHeight || document.body.clientHeight) - 100;
+    }
+    const windowZoomWidth = windowWidth * ZOOM_FACTOR;
+    const windowZoomHeight = windowHeight * ZOOM_FACTOR;
+
+    let tempWidth = realImg.width, tempHeight = realImg.height;
+    if (realImg.height > windowZoomHeight) {
+      tempHeight = windowZoomHeight;
+      if ((tempWidth = tempHeight / realImg.height * realImg.width) > windowZoomWidth) {
+        tempWidth = windowZoomWidth;
+      }
+    } else if (realImg.width > windowZoomWidth) {
+      tempWidth = windowZoomWidth;
+      tempHeight = tempWidth / realImg.width * realImg.height;
+    }
+    tempHeight = tempWidth * realImg.height / realImg.width;
+    // cache image info: curWidth, curHeight, realWidth, realHeight, left, top
+    imgCto.left = (windowWidth - tempWidth) / 2;
+    imgCto.top = (windowHeight - tempHeight) / 2;
+    imgCto.curWidth = tempWidth;
+    imgCto.curHeight = tempHeight;
+    imgCto.realWidth = realImg.width;
+    imgCto.realHeight = realImg.height;
+
+    /* console.log('calculateImgZoomSize', 'realImg: ' + realImg.width + ',' + realImg.height,
+        'tempSize: ' + tempWidth + ',' + tempHeight,
+        'windowZoomSize: ' + windowZoomWidth + ',' + windowZoomHeight,
+        'windowSize: ' + windowWidth + ',' + windowHeight); */
+    return imgCto;
+  }
+
+  /**
+   * zoom an image
+   * @param ratio
+   * @param targetImgInfo
+   * @param offsetSize
+   * @param actualSize
+   * @returns
+   */
+  public static zoom = (ratio: number, targetImgInfo: ImgCto, offsetSize?: OffsetSizeIto, actualSize?: boolean): ImgCto => {
+    let zoomRatio: number;
+    if (!actualSize) {
+      const zoomInFlag = ratio > 0;
+      ratio = zoomInFlag ? 1 + ratio : 1 / (1 - ratio);
+      zoomRatio = targetImgInfo.curWidth * ratio / targetImgInfo.realWidth;
+    }
+
+    // Snap to 100% zoom when we pass over it
+    const curRatio = targetImgInfo.curWidth / targetImgInfo.realWidth;
+    if (actualSize || (curRatio < 1 && zoomRatio > 1) || (curRatio > 1 && zoomRatio < 1)) {
+      // set zoom ratio to 100%
+      zoomRatio = 1;
+      // reduce snap offset ratio accordingly
+      ratio = 1 / curRatio;
+    }
+
+    let newWidth = targetImgInfo.realWidth * zoomRatio;
+    let newHeight = targetImgInfo.realHeight * zoomRatio;
+    if (IMG_VIEW_MIN >= newWidth || IMG_VIEW_MIN >= newHeight) {
+      // set minimum width or height
+      if (IMG_VIEW_MIN >= newWidth) {
+        newWidth = IMG_VIEW_MIN;
+        newHeight = (newWidth * targetImgInfo.realHeight) / targetImgInfo.realWidth;
+      } else {
+        newHeight = IMG_VIEW_MIN;
+        newWidth = (newHeight * targetImgInfo.realWidth) / targetImgInfo.realHeight;
+      }
+      ratio = 1;
+    }
+    const left = targetImgInfo.left + offsetSize.offsetX * (1 - ratio);
+    const top = targetImgInfo.top + offsetSize.offsetY * (1 - ratio);
+    // cache image info: curWidth, curHeight, left, top
+    targetImgInfo.curWidth = newWidth;
+    targetImgInfo.curHeight = newHeight;
+    targetImgInfo.left = left;
+    targetImgInfo.top = top;
+    // return { newWidth, left, top };
+    return targetImgInfo;
+  }
+
+  public static transform = (targetImgInfo: ImgCto) => {
+    let transform = 'rotate(' + targetImgInfo.rotate + 'deg)';
+    if (targetImgInfo.scaleX) {
+      transform += ' scaleX(-1)'
+    }
+    if (targetImgInfo.scaleY) {
+      transform += ' scaleY(-1)'
+    }
+    targetImgInfo.imgViewEl.style.setProperty('transform', transform);
+  }
+
+  public static rotate = (degree: number, targetImgInfo: ImgInfoIto) => {
+    targetImgInfo.imgViewEl.style.setProperty('transform', 'rotate(' + (targetImgInfo.rotate += degree) + 'deg)');
+  }
+
+  public static invertImgColor = (imgEle: HTMLImageElement, open: boolean) => {
+    if (open) {
+      imgEle.style.setProperty('filter', 'invert(1) hue-rotate(180deg)');
+      imgEle.style.setProperty('mix-blend-mode', 'screen');
+    } else {
+      imgEle.style.setProperty('filter', 'none');
+      imgEle.style.setProperty('mix-blend-mode', 'normal');
+    }
+    // open ? imgEle.addClass('image-toolkit-img-invert') : imgEle.removeClass('image-toolkit-img-invert');
+  }
+
+  public static copyText(text: string) {
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        //console.log('copyText:', copyText);
+      })
+      .catch(err => {
+        console.error('copy text error', err);
+      });
+  }
+
+  public static copyImage(imgEle: HTMLImageElement, width: number, height: number) {
+    let image = new Image();
+    image.crossOrigin = 'anonymous';
+    image.src = imgEle.src;
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0);
+      try {
+        canvas.toBlob(async (blob: any) => {
+          await navigator.clipboard.write([new ClipboardItem({"image/png": blob})])
+            .then(() => {
+              new Notice(t("COPY_IMAGE_SUCCESS"));
+            }, () => {
+              new Notice(t("COPY_IMAGE_ERROR"));
+            });
+        });
+      } catch (error) {
+        new Notice(t("COPY_IMAGE_ERROR"));
+        console.error(error);
+      }
+    };
+    image.onerror = () => {
+      new Notice(t("COPY_IMAGE_ERROR"));
+    }
+  }
+
+}
+
+
+================================================
+File: /src/main.ts
+================================================
+import { addIcon, Plugin, WorkspaceLeaf } from 'obsidian';
+import { DEFAULT_SETTINGS, ImageToolkitSettingTab } from './conf/settings'
+import { DEFAULT_VIEW_MODE, ICONS, VIEW_IMG_SELECTOR, ViewMode } from './conf/constants'
+import { NormalContainerView } from './ui/container/normalContainer.view';
+import { PinContainerView } from './ui/container/pinContainer.view';
+import { ContainerView } from "./ui/container/container.view";
+import { SettingsIto } from "./model/settings.to";
+import { ContainerFactory } from "./factory/containerFactory";
+import { randomUUID } from "crypto";
+
+export default class ImageToolkitPlugin extends Plugin {
+
+  public settings: SettingsIto;
+
+  private readonly containerFactory = new ContainerFactory();
+
+  public imgSelector: string = ``;
+
+  private static readonly IMG_ORIGIN_CURSOR = 'data-oit-origin-cursor';
+
+  // data-oit-event: 标识new window是否已addEventListener for click
+  private static readonly POPOUT_WINDOW_EVENT = 'data-oit-event';
+
+
+  async onload() {
+    console.log('loading %s plugin v%s ...', this.manifest.id, this.manifest.version);
+
+    await this.loadSettings();
+
+    this.addSettingTab(new ImageToolkitSettingTab(this.app, this));
+
+    // this.registerCommands();
+
+    await this.initContainer(this.settings.viewMode);
+
+    this.refreshViewTrigger();
+
+    // addEventListener for opened new windows
+    this.app.workspace.on('layout-change', () => {
+      this.app.workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
+        if (['markdown', 'image'].includes(leaf.getViewState()?.type)) {
+          const bodyEl = leaf.view.containerEl.matchParent('body');
+          if (bodyEl?.hasClass('is-popout-window')) {
+            if (!bodyEl.hasAttribute(ImageToolkitPlugin.POPOUT_WINDOW_EVENT)) {
+              console.log('popout leaf:', leaf, leaf.getDisplayText());
+              const eventId = randomUUID();
+              this.initContainer(this.settings.viewMode, eventId);
+              bodyEl.setAttr(ImageToolkitPlugin.POPOUT_WINDOW_EVENT, eventId);
+              this.refreshViewTrigger(bodyEl.ownerDocument);
+            }
+          }
+        }
+      }
+      )
+    });
+  }
+
+  onunload() {
+    console.log('unloading ' + this.manifest.id + ' plugin...');
+    this.getAllContainerViews().forEach(container => {
+      container.removeOitContainerView();
+    });
+    this.containerFactory.clearAll();
+    document.off('click', this.imgSelector, this.clickImage);
+    document.off('mouseover', this.imgSelector, this.mouseoverImg);
+    document.off('mouseout', this.imgSelector, this.mouseoutImg);
+  }
+
+  private async loadSettings() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    await this.checkViewMode(this.getViewMode());
+    await this.addIcons();
+  }
+
+  public async saveSettings() {
+    await this.saveData(this.settings);
+  }
+
+  private addIcons = async () => {
+    for (const icon of ICONS) {
+      addIcon(icon.id, icon.svg);
+    }
+  }
+
+  async registerCommands() {
+    /* this.addCommand({
+        "id": "oit-move-up-image",
+        "name": "move up the image",
+        hotkeys: [{ modifiers: ["Ctrl"], key: "ArrowUp" }],
+        checkCallback: (checking: boolean) => {
+            if (checking) return false;
+            this.containerView.moveImgViewByHotkey('UP');
+        },
+    }); */
+  }
+
+  public getViewMode = (): ViewMode => {
+    return this.settings.viewMode;
+  }
+  public setViewMode = (viewMode: ViewMode) => {
+    return this.settings.viewMode = viewMode;
+  }
+
+  private checkViewMode = async (viewMode: ViewMode) => {
+    for (const key in ViewMode) {
+      if (key == viewMode) {
+        return;
+      }
+    }
+    this.setViewMode(DEFAULT_VIEW_MODE)
+    console.log('[oit] Reset view mode: %s', DEFAULT_VIEW_MODE);
+    await this.saveSettings();
+  }
+
+  public getAllContainerViews = (): ContainerView[] => {
+    return this.containerFactory.getAllContainers();
+  }
+
+  private initContainer = async (viewMode: ViewMode, popoutWindowEventId?: string) => {
+    const container = await this.initContainerByViewMode(viewMode);
+    if (!container) {
+      console.error('[oit] Cannot init container');
+      return;
+    }
+    if (popoutWindowEventId) {
+      // popoutWindowEventId will be recorded into data-oit-event'of body tag
+      this.containerFactory.setPopoutContainer(popoutWindowEventId, container);
+    } else {
+      this.containerFactory.setMainContainer(container);
+    }
+  }
+
+  private initContainerByViewMode = async (viewMode: ViewMode, fromDefault?: boolean): Promise<ContainerView> => {
+    switch (viewMode) {
+      case ViewMode.Normal:
+        return new NormalContainerView(this);
+      case ViewMode.Pin:
+        return new PinContainerView(this);
+      default:
+        if (fromDefault) {
+          return null;
+        }
+        this.setViewMode(viewMode = DEFAULT_VIEW_MODE);
+        await this.saveSettings();
+        console.log('[oit] Reset view mode to: %s', viewMode);
+        return this.initContainerByViewMode(viewMode, true);
+    }
+  }
+
+  private isImageElement = (imgEl: HTMLImageElement): boolean => {
+    return imgEl && 'IMG' === imgEl.tagName;
+  }
+
+  private isClickable = (targetEl: HTMLImageElement, event: MouseEvent): ContainerView => {
+    let container: ContainerView;
+    if (this.isImageElement(targetEl)
+      && (container = this.containerFactory.getContainer(targetEl))
+      && container.checkHotkeySettings(event, this.settings.viewTriggerHotkey)) {
+      return container;
+    }
+    return null;
+  }
+
+  public switchViewMode = async (viewMode: ViewMode) => {
+    this.settings.viewMode = viewMode;
+    await this.saveSettings();
+    this.getAllContainerViews().forEach(container => {
+      container.removeOitContainerView();
+      this.initContainer(viewMode, container.getParentContainerEl()?.getAttribute('data-oit-event'));
+    });
+  }
+
+  /**
+   * refresh events for main container
+   */
+  public refreshViewTrigger = (doc?: Document) => {
+    // .workspace-leaf-content[data-type='markdown'] img,.workspace-leaf-content[data-type='image'] img
+    const viewImageInEditor = this.settings.viewImageInEditor;
+    // .community-modal-details img
+    const viewImageInCPB = this.settings.viewImageInCPB;
+    // false: ... img:not(a img)
+    const viewImageWithLink = this.settings.viewImageWithLink;
+    // #sr-flashcard-view img
+    const viewImageOther = this.settings.viewImageOther;
+
+    if (!doc) {
+      doc = document;
+    }
+    if (this.imgSelector) {
+      doc.off('click', this.imgSelector, this.clickImage);
+      doc.off('mouseover', this.imgSelector, this.mouseoverImg);
+      doc.off('mouseout', this.imgSelector, this.mouseoutImg);
+    }
+    if (!viewImageOther && !viewImageInEditor && !viewImageInCPB && !viewImageWithLink) {
+      return;
+    }
+    let selector = ``;
+    if (viewImageInEditor) {
+      selector += (viewImageWithLink ? VIEW_IMG_SELECTOR.EDITOR_AREAS : VIEW_IMG_SELECTOR.EDITOR_AREAS_NO_LINK);
+    }
+    if (viewImageInCPB) {
+      selector += (1 < selector.length ? `,` : ``) + (viewImageWithLink ? VIEW_IMG_SELECTOR.CPB : VIEW_IMG_SELECTOR.CPB_NO_LINK);
+    }
+    if (viewImageOther) {
+      selector += (1 < selector.length ? `,` : ``) + (viewImageWithLink ? VIEW_IMG_SELECTOR.OTHER : VIEW_IMG_SELECTOR.OTHER_NO_LINK);
+    }
+
+    if (selector) {
+      this.imgSelector = selector;
+      // doc.onclick = (event: MouseEvent) =>{
+      //     console.log(event.target);
+      // }
+      doc.on('click', this.imgSelector, this.clickImage);
+      doc.on('mouseover', this.imgSelector, this.mouseoverImg);
+      doc.on('mouseout', this.imgSelector, this.mouseoutImg);
+    }
+  }
+
+  private clickImage = (event: MouseEvent) => {
+    const targetEl = <HTMLImageElement>event.target;
+    let container: ContainerView = this.isClickable(targetEl, event);
+    if (container) {
+      container.renderContainer(targetEl);
+    }
+  }
+
+  private mouseoverImg = (event: MouseEvent) => {
+    const targetEl = (<HTMLImageElement>event.target);
+    if (!this.isClickable(targetEl, event)) {
+      return;
+    }
+    if (null == targetEl.getAttribute(ImageToolkitPlugin.IMG_ORIGIN_CURSOR)) {
+      targetEl.setAttribute(ImageToolkitPlugin.IMG_ORIGIN_CURSOR, targetEl.style.cursor || '');
+    }
+    targetEl.style.cursor = 'zoom-in';
+  }
+
+  private mouseoutImg = (event: MouseEvent) => {
+    const targetEl = (<HTMLImageElement>event.target);
+    if (!this.isClickable(targetEl, event)) {
+      return;
+    }
+    targetEl.style.cursor = targetEl.getAttribute(ImageToolkitPlugin.IMG_ORIGIN_CURSOR);
+  }
+
+}
+
+
+================================================
+File: /src/factory/containerFactory.ts
+================================================
+import {ContainerView} from "../ui/container/container.view";
+
+export class ContainerFactory {
+
+  // main window container
+  private mainContainer: ContainerView;
+
+  // popout window containers: hash -> ContainerView
+  private popoutContainers: Map<string, ContainerView> = new Map<string, ContainerView>();
+
+
+  public setMainContainer = (container: ContainerView): void => {
+    this.mainContainer = container;
+  }
+  public getMainContainer = (): ContainerView => {
+    return this.mainContainer;
+  }
+
+  public setPopoutContainer = (key: string, container: ContainerView): void => {
+    this.popoutContainers.set(key, container);
+  }
+  public getPopoutContainer = (key: string): ContainerView => {
+    return this.popoutContainers.get(key);
+  }
+  public getPopoutContainers = (): Map<string, ContainerView> => {
+    return this.popoutContainers;
+  }
+
+  public getContainer = (targetEl: HTMLImageElement): ContainerView => {
+    const bodyEl = targetEl?.matchParent('body');
+    if (!bodyEl) return null;
+    const oitEventKey = bodyEl.getAttribute('data-oit-event');
+    if (oitEventKey) {
+      //popout window
+      return this.getPopoutContainer(oitEventKey);
+    }
+    return this.mainContainer;
+  }
+
+  public getAllContainers = (): ContainerView[] => {
+    let allContainerViews = [this.mainContainer];
+    for (let value of this.popoutContainers.values()) {
+      allContainerViews.push(value);
+    }
+    return allContainerViews;
+  }
+
+  public clearAll = () => {
+    this.mainContainer = null;
+    this.popoutContainers.clear();
+  }
+
+}
+
+================================================
+File: /src/model/settings.to.ts
+================================================
+import {ViewMode} from "../conf/constants";
+
+/**
+ * interface ts object: global settings
+ */
+export interface SettingsIto {
+  viewMode: ViewMode;
+
+  viewImageInEditor: boolean;
+  // CPB = Community Plugins Browser
+  viewImageInCPB: boolean;
+  viewImageWithLink: boolean;
+  viewImageOther: boolean;
+
+  // PIN MODE
+  //pinMode: boolean;
+  pinMaximum: number;
+  pinCoverMode: boolean; // cover the earliest image which is being popped up
+
+  // VIEW DETAIL
+  imageMoveSpeed: number;
+  imgTipToggle: boolean;
+  imgFullScreenMode: string;
+  imgViewBackgroundColor: string;
+
+  imageBorderToggle: boolean;
+  imageBorderWidth: string;
+  imageBorderStyle: string;
+  imageBorderColor: string;
+
+  galleryNavbarToggle: boolean;
+  galleryNavbarDefaultColor: string;
+  galleryNavbarHoverColor: string;
+  galleryImgBorderActive: boolean;
+  galleryImgBorderActiveColor: string;
+
+  // hotkeys conf
+  moveTheImageHotkey: string;
+  switchTheImageHotkey: string;
+  doubleClickToolbar: string;
+  viewTriggerHotkey: string;
+}
+
+
+================================================
+File: /src/model/commonTo.ts
+================================================
+export interface OffsetSizeIto {
+  offsetX: number;
+  offsetY: number;
+}
+
+export class FileCto {
+  path: string;
+  ctime: number;
+  mtime: number;
+
+  constructor();
+  constructor(path: string, ctime: number, mtime: number);
+  constructor(path?: string, ctime?: number, mtime?: number) {
+    this.path = path;
+    this.ctime = ctime;
+    this.mtime = mtime;
+  }
+}
+
+
+
+
+================================================
+File: /src/model/imgTo.ts
+================================================
+/**
+ * ts class object: image operating status
+ */
+export class ImgStatusCto {
+  // true: the popup layer of viewing image is displayed
+  popup: boolean = false;
+  // whether the image is being dragged
+  dragging: boolean = false;
+
+  // keybord pressing status
+  arrowUp: boolean = false;
+  arrowDown: boolean = false;
+  arrowLeft: boolean = false;
+  arrowRight: boolean = false;
+
+  fullScreen: boolean = false;
+
+  // being dragged
+  activeImg: ImgCto;
+  activeImgZIndex: number = 0; /*--layer-status-bar*/
+
+  clickCount: number = 0;
+  clickTimer: NodeJS.Timeout;
+}
+
+/**
+ * ts interface object: image information
+ */
+export interface ImgInfoIto {
+  oitContainerViewEl: HTMLDivElement; // 'oit-normal-container-view', 'oit-pin-container-view'
+  imgViewEl: HTMLImageElement;
+  imgTitleEl: HTMLDivElement;
+  imgTipEl: HTMLDivElement;
+  imgTipTimeout?: NodeJS.Timeout;
+  imgFooterEl: HTMLElement;
+  imgPlayerEl: HTMLDivElement; // 'img-player'
+  imgPlayerImgViewEl: HTMLImageElement; // 'img-fullscreen'
+
+  curWidth: number;
+  curHeight: number;
+  realWidth: number;
+  realHeight: number;
+  left: number;
+  top: number;
+  moveX: number;
+  moveY: number;
+  rotate: number;
+
+  invertColor: boolean;
+  scaleX: boolean;
+  scaleY: boolean;
+
+  // whether the image is being previewed in full-screen mode
+  fullScreen: boolean;
+}
+
+/**
+ * ts class object: image information including all html elements
+ */
+export class ImgInfoCto {
+  oitContainerEl: HTMLDivElement; // 'oit-main', 'oit-pin'
+  imgContainerEl: HTMLDivElement; // 'oit-img-container': including <img class='oit-img-view' src='' alt=''>
+
+  imgTitleEl: HTMLDivElement; // 'oit-img-title'
+  imgTitleNameEl: HTMLSpanElement; // 'oit-img-title-name'
+  imgTitleIndexEl: HTMLSpanElement; // 'oit-img-title-index'
+
+  imgTipEl: HTMLDivElement; // 'oit-img-tip': show the zoom ratio
+  imgTipTimeout?: NodeJS.Timeout; // timer: control the display time of 'oit-img-tip'
+  imgFooterEl: HTMLElement; // 'oit-img-footer': including 'oit-img-title', 'oit-img-toolbar', 'gallery-navbar'
+  imgPlayerEl: HTMLDivElement; // 'img-player': including <img class="img-fullscreen" src='' alt=''>
+  imgPlayerImgViewEl: HTMLImageElement; // 'img-fullscreen'
+
+  imgList: Array<ImgCto> = new Array<ImgCto>();
+
+  public getPopupImgNum = (): number => {
+    let num: number = 0;
+    for (const imgCto of this.imgList) {
+      if (imgCto.popup) num++;
+    }
+    return num;
+  }
+}
+
+export class ImgCto {
+  index: number;
+  mtime: number; // modified time
+  popup: boolean = false;
+
+  targetOriginalImgEl: HTMLImageElement;
+
+  imgViewEl: HTMLImageElement; // 'oit-img-view'
+  refreshImgInterval: NodeJS.Timeout;
+  zIndex: number = 0;
+
+  curWidth: number = 0; // image's current width
+  curHeight: number = 0;
+  realWidth: number = 0; // image's real width
+  realHeight: number = 0;
+  left: number = 0; // margin-left
+  top: number = 0; // margin-top
+  moveX: number = 0; // 鼠标相对于图片的位置
+  moveY: number = 0;
+
+  rotate: number = 0; // rotateDeg
+  invertColor: boolean = false;
+  scaleX: boolean = false; // scaleX(-1)
+  scaleY: boolean = false; // scaleY(-1)
+  fullScreen: boolean = false; // whether the image is being previewed in full-screen mode
+
+  defaultImgStyle = {
+    transform: 'none',
+    filter: 'none',
+    mixBlendMode: 'normal',
+
+    borderWidth: '',
+    borderStyle: '',
+    borderColor: ''
+  }
+
+  constructor();
+  constructor(index: number, mtime: number, imgViewEl: HTMLImageElement);
+  constructor(index?: number, mtime?: number, imgViewEl?: HTMLImageElement) {
+    this.index = index;
+    this.mtime = mtime;
+    this.imgViewEl = imgViewEl;
+  }
+}
+
+
+
+================================================
+File: /src/model/galleryNavbarTo.ts
+================================================
+import {FileCto} from "./commonTo";
+
+export class GalleryImgCto {
+  alt: string;
+  src: string;
+  name?: string;
+  convert?: boolean;
+  hash?: string;
+  link?: boolean;
+  match?: RegExpMatchArray;
+
+  constructor();
+  constructor(alt: string, src: string);
+  constructor(alt?: string, src?: string) {
+    this.alt = alt;
+    this.src = src;
+  }
+}
+
+export class GalleryImgCacheCto {
+  file: FileCto;
+  galleryImgList: Array<GalleryImgCto>;
+  mtime: number;
+
+  constructor();
+  constructor(file: FileCto, galleryImgList: Array<GalleryImgCto>, mtime: number);
+  constructor(file?: FileCto, galleryImgList?: Array<GalleryImgCto>, mtime?: number) {
+    this.file = file;
+    this.galleryImgList = galleryImgList;
+    this.mtime = mtime;
+  }
+}
+
+
+================================================
+File: /src/lang/helpers.ts
+================================================
+import {moment} from "obsidian";
+import ar from "./locale/ar";
+import cz from "./locale/cz";
+import da from "./locale/da";
+import de from "./locale/de";
+import en from "./locale/en";
+import enGB from "./locale/en-gb";
+import es from "./locale/es";
+import fr from "./locale/fr";
+import hi from "./locale/hi";
+import id from "./locale/id";
+import it from "./locale/it";
+import ja from "./locale/ja";
+import ko from "./locale/ko";
+import nl from "./locale/nl";
+import no from "./locale/no";
+import pl from "./locale/pl";
+import pt from "./locale/pt";
+import ptBR from "./locale/pt-br";
+import ro from "./locale/ro";
+import ru from "./locale/ru";
+import tr from "./locale/tr";
+import zhCN from "./locale/zh-cn";
+import zhTW from "./locale/zh-tw";
+
+const localeMap: { [k: string]: Partial<typeof en> } = {
+  ar,
+  cs: cz,
+  da,
+  de,
+  en,
+  "en-gb": enGB,
+  es,
+  fr,
+  hi,
+  id,
+  it,
+  ja,
+  ko,
+  nl,
+  nn: no,
+  pl,
+  pt,
+  "pt-br": ptBR,
+  ro,
+  ru,
+  tr,
+  "zh-cn": zhCN,
+  "zh-tw": zhTW,
+};
+
+const locale = localeMap[moment.locale()];
+
+export function t(str: keyof typeof en): string {
+  if (!locale) {
+    console.error("[oit] Image toolkit locale not found", moment.locale());
+  }
+
+  return (locale && locale[str]) || en[str];
+}
+
+
+================================================
+File: /src/lang/locale/ro.ts
+================================================
+// Română
+
+export default {};
+
+================================================
+File: /src/lang/locale/pt.ts
+================================================
+// Português
+
+export default {};
+
+================================================
+File: /src/lang/locale/de.ts
+================================================
+// Deutsch
+
+export default {};
+
+
+================================================
+File: /src/lang/locale/zh-tw.ts
+================================================
+// 繁體中文
+
+export default {
+
+  // settings
+  IMAGE_TOOLKIT_SETTINGS_TITLE: "image toolkit 設定",
+
+  // toolbar icon title
+  ZOOM_IN: "放大",
+  ZOOM_OUT: "縮小",
+  FULL_SCREEN: '全螢幕',
+  REFRESH: "重整",
+  ROTATE_LEFT: "向左旋轉",
+  ROTATE_RIGHT: "向右旋轉",
+  SCALE_X: 'x 軸縮放',
+  SCALE_Y: 'y 軸縮放',
+  INVERT_COLOR: '色彩反轉',
+  COPY: '複製',
+
+  COPY_IMAGE_SUCCESS: '成功複製圖片！'
+
+};
+
+
+================================================
+File: /src/lang/locale/ko.ts
+================================================
+// 한국어
+
+export default {};
+
+================================================
+File: /src/lang/locale/ar.ts
+================================================
+// العربية
+
+export default {};
+
+================================================
+File: /src/lang/locale/hi.ts
+================================================
+// हिन्दी
+
+export default {};
+
+================================================
+File: /src/lang/locale/pt-br.ts
+================================================
+// Português do Brasil
+// Brazilian Portuguese
+
+export default {};
+
+
+================================================
+File: /src/lang/locale/ja.ts
+================================================
+// 日本語
+
+export default {};
+
+
+================================================
+File: /src/lang/locale/id.ts
+================================================
+// Bahasa Indonesia
+
+export default {};
+
+================================================
+File: /src/lang/locale/pl.ts
+================================================
+// język polski	
+
+export default {};
+
+================================================
+File: /src/lang/locale/tr.ts
+================================================
+// Türkçe
+
+export default {};
+
+================================================
+File: /src/lang/locale/da.ts
+================================================
+// Dansk
+
+export default {};
+
+================================================
+File: /src/lang/locale/zh-cn.ts
+================================================
+// 简体中文
+
+export default {
+
+  // settings
+  IMAGE_TOOLKIT_SETTINGS_TITLE: "Image Toolkit 设置",
+
+  // >>>Common Settings:
+  COMMON_SETTINGS: '通用设置：',
+  VIEW_MODE_NAME: '选择查看模式',
+  VIEW_MODE_NORMAL: '🖼 普通',
+  VIEW_MODE_PIN: '📌 贴图',
+
+  // >>> 预览触发配置：
+  VIEW_TRIGGER_SETTINGS: '预览触发配置：',
+  VIEW_IMAGE_GLOBAL_NAME: '支持全局预览图片',
+  VIEW_IMAGE_GLOBAL_DESC: '开启后，在任何地方点击图片都可以弹出预览界面，可对图片进行缩放、旋转、拖动、和反色等。',
+  VIEW_IMAGE_IN_EDITOR_NAME: '支持在编辑区域预览图片',
+  VIEW_IMAGE_IN_EDITOR_DESC: '开启后，支持在编辑区域，点击图片预览。',
+  // CPB = COMMUNITY_PLUGINS_BROWSER
+  VIEW_IMAGE_IN_CPB_NAME: '支持在社区插件页面预览图片',
+  VIEW_IMAGE_IN_CPB_DESC: '开启后，支持在社区插件页面，点击图片预览。',
+  VIEW_IMAGE_WITH_A_LINK_NAME: '支持预览带链接的图片',
+  VIEW_IMAGE_WITH_A_LINK_DESC: '开启后，支持点击带链接的图片（注意：点击该图片，会同时打开浏览器访问指定地址和弹出预览图片）',
+  VIEW_IMAGE_OTHER_NAME: '支持除上述其他地方来预览图片',
+  VIEW_IMAGE_OTHER_DESC: '除上述支持范围外，还支持一些其他区域，如Modal用户界面组件。',
+
+  // >>> PIN_MODE_SETTINGS
+  PIN_MODE_SETTINGS: "贴图模式设置：",
+  PIN_MODE_NAME: "📌 将所点击的图片贴到屏幕上",
+  PIN_MODE_DESC: "你可以将当前所点击的图片贴到屏幕上，并且可以通过右击图片选择更多操作（按 Esc 关闭已贴图片的展示）",
+  PIN_MAXIMUM_NAME: "最大贴图数量",
+  PIN_COVER_NAME: "覆盖模式",
+  PIN_COVER_DESC: "当贴图数量达到最大值后，此时再次点击图片，该图片会覆盖最早弹出的那个贴图。",
+  PIN_MAXIMUM_NOTICE: "超过最大Pin图设置（非覆盖模式）",
+
+  // >>>查看细节设置：
+  VIEW_DETAILS_SETTINGS: '查看细节设置：',
+  IMAGE_MOVE_SPEED_NAME: '图片移动速度设置',
+  IMAGE_MOVE_SPEED_DESC: '当使用键盘（上、下、左、右）移动图片时，可对图片移动速度进行设置。',
+  IMAGE_TIP_TOGGLE_NAME: "展示缩放比例提示",
+  IMAGE_TIP_TOGGLE_DESC: "开启后，当你缩放图片时会展示当前缩放的比例。",
+  IMG_FULL_SCREEN_MODE_NAME: '全屏预览模式',
+  // 全屏预览模式 下拉：
+  FIT: '自适应',
+  FILL: '填充',
+  STRETCH: '拉伸',
+  IMG_VIEW_BACKGROUND_COLOR_NAME: "设置预览图片的背景色（仅对透明背景的图片生效）",
+
+  // >>>图片边框设置：
+  IMAGE_BORDER_SETTINGS: '图片边框设置：',
+  IMAGE_BORDER_TOGGLE_NAME: "展示被点击图片的边框",
+  IMAGE_BORDER_TOGGLE_DESC: "当离开图片预览和关闭弹出层后，突出展示被点击图片的边框。",
+  IMAGE_BORDER_WIDTH_NAME: "设置图片边框宽度",
+  IMAGE_BORDER_STYLE_NAME: "设置图片边框样式",
+  IMAGE_BORDER_COLOR_NAME: "设置图片边框颜色",
+
+  // IMG_BORDER_WIDTH 下拉：
+  THIN: '较细',
+  MEDIUM: '正常',
+  THICK: '较粗',
+
+  // IMG_BORDER_STYLE  下拉：
+  //HIDDEN: '隐藏',
+  DOTTED: '点状',
+  DASHED: '虚线',
+  SOLID: '实线',
+  DOUBLE: '双线',
+  GROOVE: '凹槽',
+  RIDGE: ' 垄状',
+  INSET: '凹边',
+  OUTSET: '凸边',
+
+  // IMAGE_BORDER_COLOR_NAME  下拉：
+  BLACK: '黑色',
+  BLUE: '蓝色',
+  DARK_GREEN: '深绿色',
+  GREEN: '绿色',
+  LIME: '淡黄绿色',
+  STEEL_BLUE: '钢青色',
+  INDIGO: '靛蓝色',
+  PURPLE: '紫色',
+  GRAY: '灰色',
+  DARK_RED: '深红色',
+  LIGHT_GREEN: '浅绿色',
+  BROWN: '棕色',
+  LIGHT_BLUE: '浅蓝色',
+  SILVER: '银色',
+  RED: '红色',
+  PINK: '粉红色',
+  ORANGE: '橘黄色',
+  GOLD: '金色',
+  YELLOW: '黄色',
+
+  // >>>Gallery Navbar Settings:
+  GALLERY_NAVBAR_SETTINGS: '图片导航设置 (体验版):',
+  GALLERY_NAVBAR_TOGGLE_NAME: "展示图片导航",
+  GALLERY_NAVBAR_TOGGLE_DESC: "当前文档的所有图片会展示在弹出层的底部，可随意切换展示不同图片。",
+  GALLERY_NAVBAR_DEFAULT_COLOR_NAME: "设置图片导航底栏背景色（默认展示）",
+  GALLERY_NAVBAR_HOVER_COLOR_NAME: "设置图片导航底栏背景色（鼠标悬浮时）",
+  GALLERY_IMG_BORDER_TOGGLE_NAME: "展示图片导航上被选中的图片",
+  GALLERY_IMG_BORDER_TOGGLE_DESC: "当你选中正查看某一图片，对应图片导航底栏上将突出显示该缩略图片的边框。",
+  GALLERY_IMG_BORDER_ACTIVE_COLOR_NAME: '设置被选中图片的边框色',
+
+  // >>>HOTKEYS_SETTINGS:
+  HOTKEY_SETTINGS: "快捷键设置:",
+  HOTKEY_SETTINGS_DESC: "📢  你无法为'移动图片'和'切换图片'设置相同的快捷键。（不支持贴图模式）",
+  MOVE_THE_IMAGE_NAME: "为移动图片设置快捷键",
+  MOVE_THE_IMAGE_DESC: "你可以利用快捷键来移动弹出层上的图片。",
+  SWITCH_THE_IMAGE_NAME: "为切换图片设置快捷键",
+  SWITCH_THE_IMAGE_DESC: "你可以利用快捷键来切换在图片导航栏上的图片至上一张/下一张。(注意: 仅当开启“展示图片导航”后，才能使用该快捷键来控制切换图片。)",
+  DOUBLE_CLICK_TOOLBAR_NAME: "双击",
+  VIEW_TRIGGER_HOTKEY_NAME: "为触发弹出查看图片设置快捷键",
+  VIEW_TRIGGER_HOTKEY_DESC: "当你设置为“无”，你可以直接点击预览图片；否则，须按住已配置的修改键（Ctrl、Alt、Shift）才能点击查看某个图片。",
+
+  // MODIFIER_HOTKEYS
+  NONE: "无",
+
+  // toolbar icon title
+  ZOOM_TO_100: "缩放至100%",
+  ZOOM_IN: "放大",
+  ZOOM_OUT: "缩小",
+  FULL_SCREEN: "全屏",
+  REFRESH: "刷新",
+  ROTATE_LEFT: "左旋",
+  ROTATE_RIGHT: "右旋",
+  SCALE_X: 'x轴翻转',
+  SCALE_Y: 'y轴翻转',
+  INVERT_COLOR: '反色',
+  COPY: '复制',
+  CLOSE: '关闭',
+
+  // tip:
+  COPY_IMAGE_SUCCESS: '拷贝图片成功！',
+  COPY_IMAGE_ERROR: '拷贝图片失败！'
+
+};
+
+
+================================================
+File: /src/lang/locale/nl.ts
+================================================
+// Nederlands
+
+export default {};
+
+================================================
+File: /src/lang/locale/no.ts
+================================================
+// Norsk
+
+export default {};
+
+================================================
+File: /src/lang/locale/cz.ts
+================================================
+// čeština
+
+export default {};
+
+================================================
+File: /src/lang/locale/en.ts
+================================================
+// English
+
+export default {
+
+  // settings
+  IMAGE_TOOLKIT_SETTINGS_TITLE: 'Image Toolkit Settings',
+
+  // >>>Common Settings:
+  COMMON_SETTINGS: 'Common Settings:',
+  VIEW_MODE_NAME: 'Choose a mode to view images',
+  VIEW_MODE_NORMAL: '🖼 Normal',
+  VIEW_MODE_PIN: '📌 Pin',
+
+  // >>>View Trigger Settings:
+  VIEW_TRIGGER_SETTINGS: 'View Trigger Settings:',
+  VIEW_IMAGE_GLOBAL_NAME: 'Click and view an image globally', // @Deprecated
+  VIEW_IMAGE_GLOBAL_DESC: 'You can zoom, rotate, drag, and invert it on the popup layer when clicking an image.', // @Deprecated
+  VIEW_IMAGE_IN_EDITOR_NAME: 'Click and view an image in the Editor Area',
+  VIEW_IMAGE_IN_EDITOR_DESC: 'Turn on this option if you want to click and view an image in the Editor Area.',
+  // CPB = COMMUNITY_PLUGINS_BROWSER
+  VIEW_IMAGE_IN_CPB_NAME: 'Click and view an image in the Community Plugins browser',
+  VIEW_IMAGE_IN_CPB_DESC: 'Turn on this option if you want to click and view an image in the Community Plugins browser.',
+  VIEW_IMAGE_WITH_A_LINK_NAME: 'Click and view an image with a link',
+  VIEW_IMAGE_WITH_A_LINK_DESC: 'Turn on this option if you want to click and view an image with a link. (NOTE: The browser will be opened for you to visit the link and the image will be popped up for being viewed at the same time when you click the image.)',
+  VIEW_IMAGE_OTHER_NAME: 'Click and view in the other areas except the above',
+  VIEW_IMAGE_OTHER_DESC: 'Except for the above mentioned, it also supports other areas, like some modal user interface components.',
+
+  // >>> PIN_MODE_SETTINGS
+  PIN_MODE_SETTINGS: "Pin Mode Settings:",
+  PIN_MODE_NAME: "📌 Pin an image",
+  PIN_MODE_DESC: "You can pin an image onto the top of the screen. And have more options by right click. (press Esc to close the image where your mouse cursor is hovering)",
+  PIN_MAXIMUM_NAME: "The maximum images you can pin",
+  PIN_COVER_NAME: "Cover mode",
+  PIN_COVER_DESC: "After those pinned images reach maximum, you can cover the earliest pinned image when you click an image once again.",
+  PIN_MAXIMUM_NOTICE: "Exceeded maximum images you can pin (non cover mode)",
+
+  // >>>View Detail Settings:
+  VIEW_DETAILS_SETTINGS: 'View Detail Settings:',
+  IMAGE_MOVE_SPEED_NAME: 'Set the moving speed of the image',
+  IMAGE_MOVE_SPEED_DESC: 'When you move an image on the popup layer by keyboard (up, down, left, right), the moving speed of the image can be set here.',
+  IMAGE_TIP_TOGGLE_NAME: "Display the image's zoom number",
+  IMAGE_TIP_TOGGLE_DESC: "Turn on this option if you want to display the zoom number when you zoom the image.",
+  IMG_FULL_SCREEN_MODE_NAME: 'Full-screen preview mode',
+  // preview mode options:
+  FIT: 'Fit',
+  FILL: 'Fill',
+  STRETCH: 'Stretch',
+  IMG_VIEW_BACKGROUND_COLOR_NAME: "Set the background color of the previewed image (Only support the image with transparent background)",
+
+  // >>>Image Border Settings:
+  IMAGE_BORDER_SETTINGS: 'Image Border Settings:',
+  IMAGE_BORDER_TOGGLE_NAME: "Display the image's border",
+  IMAGE_BORDER_TOGGLE_DESC: "The clicked image's border can be displayed after you exit previewing and close the popup layer.",
+  IMAGE_BORDER_WIDTH_NAME: "Set the image's border width",
+  IMAGE_BORDER_STYLE_NAME: "Set the image's border style",
+  IMAGE_BORDER_COLOR_NAME: "Set the image's border color",
+
+  // IMG_BORDER_WIDTH options:
+  THIN: 'thin',
+  MEDIUM: 'medium',
+  THICK: 'thick',
+
+  // IMG_BORDER_STYLE options:
+  //HIDDEN: 'hidden',
+  DOTTED: 'dotted',
+  DASHED: 'dashed',
+  SOLID: 'solid',
+  DOUBLE: 'double',
+  GROOVE: 'groove',
+  RIDGE: 'ridge',
+  INSET: 'inset',
+  OUTSET: 'outset',
+
+  // IMAGE_BORDER_COLOR_NAME options:
+  BLACK: 'black',
+  BLUE: 'blue',
+  DARK_GREEN: 'dark green',
+  GREEN: 'green',
+  LIME: 'lime',
+  STEEL_BLUE: 'steel blue',
+  INDIGO: 'indigo',
+  PURPLE: 'purple',
+  GRAY: 'gray',
+  DARK_RED: 'dark red',
+  LIGHT_GREEN: 'light green',
+  BROWN: 'brown',
+  LIGHT_BLUE: 'light blue',
+  SILVER: 'silver',
+  RED: 'red',
+  PINK: 'pink',
+  ORANGE: 'orange',
+  GOLD: 'gold',
+  YELLOW: 'yellow',
+
+  // >>>Gallery Navbar Settings:
+  GALLERY_NAVBAR_SETTINGS: 'Gallery Navbar Settings (Experimental):',
+  GALLERY_NAVBAR_TOGGLE_NAME: "Display gallery navbar",
+  GALLERY_NAVBAR_TOGGLE_DESC: "All of the images in the current pane view can be displayed at the bottom of the popup layer.",
+  GALLERY_NAVBAR_DEFAULT_COLOR_NAME: "Set the background color of the gallery navbar (default state)",
+  GALLERY_NAVBAR_HOVER_COLOR_NAME: "Set the background color of the gallery navbar (hovering state)",
+  GALLERY_IMG_BORDER_TOGGLE_NAME: "Display the selected image on the gallery navbar",
+  GALLERY_IMG_BORDER_TOGGLE_DESC: "When you select an image, the image's border will be displayed, so you can know which image is currently active.",
+  GALLERY_IMG_BORDER_ACTIVE_COLOR_NAME: 'Set the border color of the selected image',
+
+  // >>>HOTKEYS_SETTINGS:
+  HOTKEY_SETTINGS: "Hotkey Settings:",
+  HOTKEY_SETTINGS_DESC: "📢 You cannot set the same hotkey for 'Move the image' and 'Switch the image' at the same time. (NOT SUPPORT in Pin Mode)",
+  MOVE_THE_IMAGE_NAME: "Set the hotkey for moving the image",
+  MOVE_THE_IMAGE_DESC: "You can move the image on the popup layer by hotkey.",
+  SWITCH_THE_IMAGE_NAME: "Set the hotkey for switching the image",
+  SWITCH_THE_IMAGE_DESC: "You can switch to the previous/next image on the gallery navbar by hotkey. (NOTE: You need to turn on 'Display gallery navbar' first, if you wanna use this hotkey.)",
+  DOUBLE_CLICK_TOOLBAR_NAME: "Double click",
+  VIEW_TRIGGER_HOTKEY_NAME: "Set the hotkey for triggering viewing an image",
+  VIEW_TRIGGER_HOTKEY_DESC: "When you set 'None', you can directly click and preview an image without holding any modifier keys; otherwise, you must hold the configured modifier keys to click and preview an image.",
+
+  // MODIFIER_HOTKEYS
+  NONE: "None",
+  CTRL: "Ctrl",
+  ALT: "Alt",
+  SHIFT: "Shift",
+  CTRL_ALT: "Ctrl+Alt",
+  CTRL_SHIFT: "Ctrl+Shift",
+  SHIFT_ALT: "Shift+Alt",
+  CTRL_SHIFT_ALT: "Ctrl+Shift+Alt",
+
+  // toolbar icon title
+  ZOOM_TO_100: "zoom to 100%",
+  ZOOM_IN: "zoom in",
+  ZOOM_OUT: "zoom out",
+  FULL_SCREEN: 'full screen',
+  REFRESH: "refresh",
+  ROTATE_LEFT: "rotate left",
+  ROTATE_RIGHT: "rotate right",
+  SCALE_X: 'flip along x-axis',
+  SCALE_Y: 'flip along y-axis',
+  INVERT_COLOR: 'invert color',
+  COPY: 'copy',
+  CLOSE: 'close',
+
+  // tip:
+  COPY_IMAGE_SUCCESS: 'Copy the image successfully!',
+  COPY_IMAGE_ERROR: 'Fail to copy the image!'
+
+};
+
+
+================================================
+File: /src/lang/locale/ru.ts
+================================================
+// русский
+
+export default {};
+
+================================================
+File: /src/lang/locale/en-gb.ts
+================================================
+// British English
+
+export default {};
+
+
+================================================
+File: /src/lang/locale/it.ts
+================================================
+// Italiano
+
+export default {};
+
+
+================================================
+File: /src/lang/locale/es.ts
+================================================
+// Español
+
+export default {};
+
+================================================
+File: /src/lang/locale/fr.ts
+================================================
+// français
+
+export default {};
+
+================================================
+File: /src/conf/constants.ts
+================================================
+export const SYMBOL = {
+  WHITESPACE: ' ',
+  BACKTICK: '`'
+}
+
+export enum ViewMode {
+  Normal = 'Normal',
+  Pin = 'Pin',
+}
+
+export const DEFAULT_VIEW_MODE: ViewMode = ViewMode.Normal;
+
+export const OIT_CLASS = {
+  CONTAINER_ROOT: 'oit',
+  CONTAINER_NORMAL: 'oit-normal',
+  CONTAINER_PIN: 'oit-pin',
+
+  // the place for storing images
+  IMG_CONTAINER: 'oit-img-container',
+  IMG_VIEW: 'oit-img-view',
+
+  IMG_TTP: 'oit-img-tip',
+
+  IMG_FOOTER: 'oit-img-footer',
+  IMG_TITLE: 'oit-img-title',
+  IMG_TITLE_NAME: 'oit-img-title-name',
+  IMG_TITLE_INDEX: 'oit-img-title-index',
+
+  IMG_TOOLBAR: 'oit-img-toolbar',
+
+  IMG_PLAYER: 'img-player',
+  IMG_FULLSCREEN: 'img-fullscreen',
+
+}
+
+export const ZOOM_FACTOR = 0.8;
+
+export const IMG_VIEW_MIN = 30;
+
+export const ICONS = [{
+  id: 'zoom-to-100',
+  svg: `<g> <path id="svg_1" d="m42,6c-18.8,0 -34,15.2 -34,34s15.2,34 34,34c7.4,0 14.3,-2.4 19.9,-6.4l26.3,26.3l5.6,-5.6l-26,-26.1c5.1,-6 8.2,-13.7 8.2,-22.1c0,-18.9 -15.2,-34.1 -34,-34.1zm0,4c16.6,0 30,13.4 30,30s-13.4,30 -30,30s-30,-13.4 -30,-30s13.4,-30 30,-30z" stroke-width="2" stroke="currentColor" fill="currentColor"/> <text font-weight="bold" xml:space="preserve" text-anchor="start" font-family="Noto Sans JP" font-size="24" id="svg_2" y="48.5" x="24" stroke-width="0" stroke="#000" fill="#000000">1:1</text> </g>`
+}]
+
+export const SEPARATOR_SYMBOL = "---";
+
+export const TOOLBAR_CONF = [{
+  title: "ZOOM_TO_100",
+  class: 'toolbar_zoom_to_100',
+  icon: 'zoom-to-100',
+  enableToolbarIcon: true,
+  enableMenu: true,
+  enableHotKey: true
+}, {
+  title: "ZOOM_IN",
+  class: 'toolbar_zoom_in',
+  icon: 'zoom-in',
+  enableToolbarIcon: true,
+  enableMenu: false,
+  enableHotKey: true
+}, {
+  title: "ZOOM_OUT",
+  class: 'toolbar_zoom_out',
+  icon: 'zoom-out',
+  enableToolbarIcon: true,
+  enableMenu: false,
+  enableHotKey: true
+}, {
+  title: "FULL_SCREEN",
+  class: 'toolbar_full_screen',
+  icon: 'expand',
+  enableToolbarIcon: true,
+  enableMenu: true,
+  enableHotKey: true
+}, {
+  title: "REFRESH",
+  class: 'toolbar_refresh',
+  icon: 'refresh-ccw',
+  enableToolbarIcon: true,
+  enableMenu: true,
+  enableHotKey: true
+}, {
+  title: "ROTATE_LEFT",
+  class: 'toolbar_rotate_left',
+  icon: 'rotate-ccw',
+  enableToolbarIcon: true,
+  enableMenu: true,
+  enableHotKey: true
+}, {
+  title: "ROTATE_RIGHT",
+  class: 'toolbar_rotate_right',
+  icon: 'rotate-cw',
+  enableToolbarIcon: true,
+  enableMenu: true,
+  enableHotKey: true
+}, {
+  title: "SCALE_X",
+  class: 'toolbar_scale_x',
+  icon: 'move-horizontal',
+  enableToolbarIcon: true,
+  enableMenu: true,
+  enableHotKey: true
+}, {
+  title: "SCALE_Y",
+  class: 'toolbar_scale_y',
+  icon: 'move-vertical',
+  enableToolbarIcon: true,
+  enableMenu: true,
+  enableHotKey: true
+}, {
+  title: "INVERT_COLOR",
+  class: 'toolbar_invert_color',
+  icon: 'droplet',
+  enableToolbarIcon: true,
+  enableMenu: true,
+  enableHotKey: true
+}, {
+  title: "COPY",
+  class: 'toolbar_copy',
+  icon: 'copy',
+  enableToolbarIcon: true,
+  enableMenu: true,
+  enableHotKey: true
+}, {
+  title: SEPARATOR_SYMBOL,
+  enableToolbarIcon: false,
+  enableMenu: true,
+  enableHotKey: false
+}, {
+  title: "CLOSE",
+  class: 'toolbar_close',
+  icon: 'trash',
+  enableToolbarIcon: false,
+  enableMenu: true,
+  enableHotKey: true
+}];
+
+export const IMG_FULL_SCREEN_MODE = {
+  FIT: 'FIT',
+  FILL: 'FILL',
+  STRETCH: 'STRETCH'
+}
+
+export const VIEW_IMG_SELECTOR = {
+  EDITOR_AREAS: `.workspace-leaf-content[data-type='markdown'] img,.workspace-leaf-content[data-type='image'] img`,
+  EDITOR_AREAS_NO_LINK: `.workspace-leaf-content[data-type='markdown'] img:not(a img),.workspace-leaf-content[data-type='image'] img:not(a img)`,
+
+  CPB: `.community-modal-details img`,
+  CPB_NO_LINK: `.community-modal-details img:not(a img)`,
+
+  OTHER: `.modal-content img`,
+  OTHER_NO_LINK: `.modal-content img:not(a img)`,
+}
+
+export const IMG_BORDER_WIDTH = {
+  THIN: 'thin',
+  MEDIUM: 'medium',
+  THICK: 'thick'
+}
+
+export const IMG_BORDER_STYLE = {
+  // HIDDEN: 'hidden',
+  DOTTED: 'dotted',
+  DASHED: 'dashed',
+  SOLID: 'solid',
+  DOUBLE: 'double',
+  GROOVE: 'groove',
+  RIDGE: 'ridge',
+  INSET: 'inset',
+  OUTSET: 'outset'
+}
+
+// https://www.runoob.com/cssref/css-colorsfull.html
+export const IMG_BORDER_COLOR = {
+  BLACK: 'black',
+  BLUE: 'blue',
+  DARK_GREEN: 'darkgreen',
+  GREEN: 'green',
+  LIME: 'lime',
+  STEEL_BLUE: 'steelblue',
+  INDIGO: 'indigo',
+  PURPLE: 'purple',
+  GRAY: 'gray',
+  DARK_RED: 'darkred',
+  LIGHT_GREEN: 'lightgreen',
+  BROWN: 'brown',
+  LIGHT_BLUE: 'lightblue',
+  SILVER: 'silver',
+  RED: 'red',
+  PINK: 'pink',
+  ORANGE: 'orange',
+  GOLD: 'gold',
+  YELLOW: 'yellow'
+}
+
+export const GALLERY_NAVBAR_DEFAULT_COLOR = '#0000001A'; // rgba(0, 0, 0, 0.1)
+export const GALLERY_NAVBAR_HOVER_COLOR = '#0000004D'; // rgba(0, 0, 0, 0.3)
+export const GALLERY_IMG_BORDER_ACTIVE_COLOR = '#FF0000'; // red
+
+export const MODIFIER_HOTKEYS = {
+  NONE: "NONE",
+  CTRL: "CTRL",
+  ALT: "ALT",
+  SHIFT: "SHIFT",
+  CTRL_ALT: "CTRL_ALT",
+  CTRL_SHIFT: "CTRL_SHIFT",
+  SHIFT_ALT: "SHIFT_ALT",
+  CTRL_SHIFT_ALT: "CTRL_SHIFT_ALT"
+}
+
+export const MOVE_THE_IMAGE = {
+  CODE: "MOVE_THE_IMAGE",
+  DEFAULT_HOTKEY: MODIFIER_HOTKEYS.NONE,
+  SVG: `<svg width="56" height="37" xmlns="http://www.w3.org/2000/svg" class="icon"><path fill="none" d="M-1 -1H57V38H-1z"/><g><path stroke="null" fill="#707070" d="M19.001 16.067V1.928C19.001.864 19.865 0 20.93 0h14.142c1.064 0 1.928.864 1.928 1.928v14.14a1.929 1.929 0 01-1.928 1.927H20.929a1.929 1.929 0 01-1.928-1.928zm4.805-5.909l2.908-3.032v7.334c0 .535.43.964.965.964h.642c.535 0 .965-.43.965-.964V7.126l2.908 3.032a.965.965 0 001.378.017l.438-.442a.96.96 0 000-1.362l-5.327-5.33a.96.96 0 00-1.362 0l-5.335 5.33a.96.96 0 000 1.362l.438.441a.97.97 0 001.382-.016zM36.999 20.933v14.139A1.929 1.929 0 0135.07 37H20.929a1.929 1.929 0 01-1.928-1.928v-14.14c0-1.064.864-1.927 1.928-1.927h14.142c1.064 0 1.928.863 1.928 1.928zm-4.805 5.909l-2.908 3.032V22.54a.962.962 0 00-.965-.964h-.642a.962.962 0 00-.965.964v7.334l-2.908-3.032a.965.965 0 00-1.378-.016l-.438.441a.96.96 0 000 1.362l5.327 5.33a.96.96 0 001.362 0l5.335-5.33a.96.96 0 000-1.362l-.438-.441a.97.97 0 00-1.382.016zM16.068 37.001H1.93a1.929 1.929 0 01-1.928-1.928V20.932c0-1.065.864-1.928 1.928-1.928h14.14c1.064 0 1.927.863 1.927 1.928v14.14a1.929 1.929 0 01-1.928 1.93zm-5.908-4.804l-3.033-2.909h7.335c.534 0 .964-.43.964-.964v-.643a.962.962 0 00-.964-.964H7.127l3.033-2.909a.965.965 0 00.016-1.378l-.442-.438a.96.96 0 00-1.362 0l-5.33 5.327a.96.96 0 000 1.362l5.33 5.335a.96.96 0 001.362 0l.442-.438a.97.97 0 00-.016-1.381zM39.932 19.004H54.07c1.064 0 1.928.863 1.928 1.928v14.14a1.929 1.929 0 01-1.928 1.93H39.93a1.929 1.929 0 01-1.927-1.93v-14.14c0-1.065.863-1.928 1.928-1.928zm5.908 4.804l3.033 2.909h-7.335a.962.962 0 00-.964.964v.643c0 .534.43.964.964.964h7.335l-3.033 2.909a.965.965 0 00-.016 1.377l.442.438a.96.96 0 001.362 0l5.33-5.327a.96.96 0 000-1.362l-5.33-5.335a.96.96 0 00-1.362 0l-.442.438a.97.97 0 00.016 1.382z"/></g></svg>`
+}
+
+export const SWITCH_THE_IMAGE = {
+  CODE: "SWITCH_THE_IMAGE",
+  DEFAULT_HOTKEY: MODIFIER_HOTKEYS.CTRL,
+  SVG: `<svg width="37" height="18" xmlns="http://www.w3.org/2000/svg" class="icon"><path fill="none" d="M-1 -1H38V19H-1z"/><g><path stroke="null" fill="#707070" d="M16.068 17.999H1.93A1.929 1.929 0 01.001 16.07V1.929C.001.865.865.001 1.93.001h14.14c1.064 0 1.927.864 1.927 1.928v14.142a1.929 1.929 0 01-1.928 1.928zm-5.908-4.805l-3.033-2.908h7.335c.534 0 .964-.43.964-.965V8.68a.962.962 0 00-.964-.965H7.127l3.033-2.908a.965.965 0 00.016-1.378l-.442-.438a.96.96 0 00-1.362 0l-5.33 5.327a.96.96 0 000 1.362l5.33 5.335a.96.96 0 001.362 0l.442-.438a.97.97 0 00-.016-1.382zM20.932.001H35.07c1.064 0 1.928.864 1.928 1.928v14.142a1.929 1.929 0 01-1.928 1.928H20.93a1.929 1.929 0 01-1.927-1.928V1.929c0-1.064.863-1.928 1.928-1.928zm5.908 4.805l3.033 2.908h-7.335a.962.962 0 00-.964.965v.642c0 .535.43.965.964.965h7.335l-3.033 2.908a.965.965 0 00-.016 1.378l.442.438a.96.96 0 001.362 0l5.33-5.327a.96.96 0 000-1.362l-5.33-5.335a.96.96 0 00-1.362 0l-.442.438a.97.97 0 00.016 1.382z"/></g></svg>`
+}
+
+export const IMG_DEFAULT_BACKGROUND_COLOR = '#00000000';
+
+export const enum CONTAINER_TYPE {
+  MAIN,
+  PIN
+}
+
+
+================================================
+File: /src/conf/settings.ts
+================================================
+import {App, PluginSettingTab, Setting} from 'obsidian';
+import {t} from 'src/lang/helpers';
+import type ImageToolkitPlugin from "src/main";
+import {
+  GALLERY_IMG_BORDER_ACTIVE_COLOR,
+  GALLERY_NAVBAR_DEFAULT_COLOR,
+  GALLERY_NAVBAR_HOVER_COLOR,
+  IMG_BORDER_COLOR,
+  IMG_BORDER_STYLE,
+  IMG_BORDER_WIDTH,
+  IMG_DEFAULT_BACKGROUND_COLOR,
+  IMG_FULL_SCREEN_MODE,
+  MODIFIER_HOTKEYS,
+  MOVE_THE_IMAGE,
+  SWITCH_THE_IMAGE,
+  TOOLBAR_CONF,
+  ViewMode
+} from './constants';
+import Pickr from '@simonwep/pickr';
+import {SettingsIto} from "../model/settings.to";
+
+
+export const DEFAULT_SETTINGS: SettingsIto = {
+  viewMode: ViewMode.Normal,
+
+  viewImageInEditor: true,
+  viewImageInCPB: true,
+  viewImageWithLink: true,
+  viewImageOther: true,
+
+  // pinMode: false,
+  pinMaximum: 3,
+  pinCoverMode: true, // cover the earliest image which is being popped up
+
+  imageMoveSpeed: 10,
+  imgTipToggle: true,
+  imgFullScreenMode: IMG_FULL_SCREEN_MODE.FIT,
+  imgViewBackgroundColor: IMG_DEFAULT_BACKGROUND_COLOR,
+
+  imageBorderToggle: false,
+  imageBorderWidth: IMG_BORDER_WIDTH.MEDIUM,
+  imageBorderStyle: IMG_BORDER_STYLE.SOLID,
+  imageBorderColor: IMG_BORDER_COLOR.RED,
+
+  galleryNavbarToggle: true,
+  galleryNavbarDefaultColor: GALLERY_NAVBAR_DEFAULT_COLOR,
+  galleryNavbarHoverColor: GALLERY_NAVBAR_HOVER_COLOR,
+  galleryImgBorderActive: true,
+  galleryImgBorderActiveColor: GALLERY_IMG_BORDER_ACTIVE_COLOR,
+
+  // hotkeys conf
+  moveTheImageHotkey: MOVE_THE_IMAGE.DEFAULT_HOTKEY,
+  switchTheImageHotkey: SWITCH_THE_IMAGE.DEFAULT_HOTKEY,
+  doubleClickToolbar: TOOLBAR_CONF[3].class, // FULL_SCREEN
+  viewTriggerHotkey: MODIFIER_HOTKEYS.NONE
+}
+
+export class ImageToolkitSettingTab extends PluginSettingTab {
+  private plugin: ImageToolkitPlugin;
+
+  constructor(app: App, plugin: ImageToolkitPlugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
+
+  display(): void {
+    let {containerEl} = this;
+    containerEl.empty();
+
+    containerEl.createEl('h2', {text: t("IMAGE_TOOLKIT_SETTINGS_TITLE")});
+
+    // Common Settings:
+    this.displayCommonSettings(containerEl);
+
+    // View Trigger Settings:
+    this.displayViewTriggerSettings(containerEl);
+
+    // Pin Mode Settings:
+    this.displayPinModeSettings(containerEl);
+
+    //region >>> VIEW_DETAILS_SETTINGS
+    containerEl.createEl('h3', {text: t("VIEW_DETAILS_SETTINGS")});
+
+    let imgMoveSpeedScaleText: HTMLDivElement;
+    new Setting(containerEl)
+      .setName(t("IMAGE_MOVE_SPEED_NAME"))
+      .setDesc(t("IMAGE_MOVE_SPEED_DESC"))
+      .addSlider(slider => slider
+        .setLimits(1, 30, 1)
+        .setValue(this.plugin.settings.imageMoveSpeed)
+        .onChange(async (value) => {
+          imgMoveSpeedScaleText.innerText = " " + value.toString();
+          this.plugin.settings.imageMoveSpeed = value;
+          this.plugin.saveSettings();
+        }))
+      .settingEl.createDiv('', (el) => {
+      imgMoveSpeedScaleText = el;
+      el.style.minWidth = "2.3em";
+      el.style.textAlign = "right";
+      el.innerText = " " + this.plugin.settings.imageMoveSpeed.toString();
+    });
+
+    new Setting(containerEl)
+      .setName(t("IMAGE_TIP_TOGGLE_NAME"))
+      .setDesc(t("IMAGE_TIP_TOGGLE_DESC"))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.imgTipToggle)
+        .onChange(async (value) => {
+          this.plugin.settings.imgTipToggle = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName(t("IMG_FULL_SCREEN_MODE_NAME"))
+      .addDropdown(async (dropdown) => {
+        for (const key in IMG_FULL_SCREEN_MODE) {
+          // @ts-ignore
+          dropdown.addOption(key, t(key));
+        }
+        dropdown.setValue(this.plugin.settings.imgFullScreenMode);
+        dropdown.onChange(async (option) => {
+          this.plugin.settings.imgFullScreenMode = option;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    this.createPickrSetting(containerEl, 'IMG_VIEW_BACKGROUND_COLOR_NAME', IMG_DEFAULT_BACKGROUND_COLOR);
+    //endregion
+
+    //region >>> IMAGE_BORDER_SETTINGS
+    containerEl.createEl('h3', {text: t("IMAGE_BORDER_SETTINGS")});
+
+    new Setting(containerEl)
+      .setName(t("IMAGE_BORDER_TOGGLE_NAME"))
+      .setDesc(t("IMAGE_BORDER_TOGGLE_DESC"))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.imageBorderToggle)
+        .onChange(async (value) => {
+          this.plugin.settings.imageBorderToggle = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName(t("IMAGE_BORDER_WIDTH_NAME"))
+      .addDropdown(async (dropdown) => {
+        for (const key in IMG_BORDER_WIDTH) {
+          // @ts-ignore
+          dropdown.addOption(IMG_BORDER_WIDTH[key], t(key));
+        }
+        dropdown.setValue(this.plugin.settings.imageBorderWidth);
+        dropdown.onChange(async (option) => {
+          this.plugin.settings.imageBorderWidth = option;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName(t("IMAGE_BORDER_STYLE_NAME"))
+      .addDropdown(async (dropdown) => {
+        for (const key in IMG_BORDER_STYLE) {
+          // @ts-ignore
+          dropdown.addOption(IMG_BORDER_STYLE[key], t(key));
+        }
+        dropdown.setValue(this.plugin.settings.imageBorderStyle);
+        dropdown.onChange(async (option) => {
+          this.plugin.settings.imageBorderStyle = option;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName(t("IMAGE_BORDER_COLOR_NAME"))
+      .addDropdown(async (dropdown) => {
+        for (const key in IMG_BORDER_COLOR) {
+          // @ts-ignore
+          dropdown.addOption(IMG_BORDER_COLOR[key], t(key));
+        }
+        dropdown.setValue(this.plugin.settings.imageBorderColor);
+        dropdown.onChange(async (option) => {
+          this.plugin.settings.imageBorderColor = option;
+          await this.plugin.saveSettings();
+        });
+      });
+    //endregion
+
+    //region >>> GALLERY_NAVBAR_SETTINGS
+    let galleryNavbarDefaultColorSetting: Setting, galleryNavbarHoverColorSetting: Setting,
+      galleryImgBorderToggleSetting: Setting, galleryImgBorderActiveColorSetting: Setting;
+
+    containerEl.createEl('h3', {text: t("GALLERY_NAVBAR_SETTINGS")});
+
+    new Setting(containerEl)
+      .setName(t("GALLERY_NAVBAR_TOGGLE_NAME"))
+      .setDesc(t("GALLERY_NAVBAR_TOGGLE_DESC"))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.galleryNavbarToggle)
+        .onChange(async (value) => {
+          this.plugin.settings.galleryNavbarToggle = value;
+          this.switchSettingsDisabled(!value, galleryNavbarDefaultColorSetting, galleryNavbarHoverColorSetting,
+            galleryImgBorderToggleSetting, galleryImgBorderActiveColorSetting);
+          await this.plugin.saveSettings();
+        }));
+
+    galleryNavbarDefaultColorSetting = this.createPickrSetting(containerEl, 'GALLERY_NAVBAR_DEFAULT_COLOR_NAME', GALLERY_NAVBAR_DEFAULT_COLOR);
+    galleryNavbarHoverColorSetting = this.createPickrSetting(containerEl, 'GALLERY_NAVBAR_HOVER_COLOR_NAME', GALLERY_NAVBAR_HOVER_COLOR);
+
+    galleryImgBorderToggleSetting = new Setting(containerEl)
+      .setName(t("GALLERY_IMG_BORDER_TOGGLE_NAME"))
+      .setDesc(t("GALLERY_IMG_BORDER_TOGGLE_DESC"))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.galleryImgBorderActive)
+        .onChange(async (value) => {
+          this.plugin.settings.galleryImgBorderActive = value;
+          await this.plugin.saveSettings();
+        }));
+    galleryImgBorderActiveColorSetting = this.createPickrSetting(containerEl, 'GALLERY_IMG_BORDER_ACTIVE_COLOR_NAME', GALLERY_IMG_BORDER_ACTIVE_COLOR);
+
+    this.switchSettingsDisabled(!this.plugin.settings.galleryNavbarToggle, galleryNavbarDefaultColorSetting,
+      galleryNavbarHoverColorSetting, galleryImgBorderToggleSetting, galleryImgBorderActiveColorSetting);
+    //endregion
+
+    //region >>> HOTKEYS_SETTINGS
+    containerEl.createEl('h3', {text: t("HOTKEY_SETTINGS")});
+    containerEl.createEl('p', {text: t("HOTKEY_SETTINGS_DESC")});
+
+    if (this.plugin.settings.moveTheImageHotkey === this.plugin.settings.switchTheImageHotkey) {
+      this.plugin.settings.moveTheImageHotkey = MOVE_THE_IMAGE.DEFAULT_HOTKEY;
+    }
+    const moveTheImageSetting = new Setting(containerEl)
+      .setName(t("MOVE_THE_IMAGE_NAME"))
+      .setDesc(t("MOVE_THE_IMAGE_DESC"))
+      .addDropdown(async (dropdown) => {
+        dropdown.addOptions(this.getDropdownOptions());
+        dropdown.setValue(this.plugin.settings.moveTheImageHotkey);
+        dropdown.onChange(async (option) => {
+          this.plugin.settings.moveTheImageHotkey = option;
+          this.checkDropdownOptions(MOVE_THE_IMAGE.CODE, switchTheImageSetting);
+          await this.plugin.saveSettings();
+        });
+      }).then((setting) => {
+        setting.controlEl.appendChild(createDiv('setting-editor-extra-setting-button hotkeys-settings-plus', (el) => {
+          el.innerHTML = "+";
+        }));
+        setting.controlEl.appendChild(createDiv('setting-editor-extra-setting-button', (el) => {
+          el.innerHTML = MOVE_THE_IMAGE.SVG;
+        }));
+      });
+
+    if (this.plugin.settings.switchTheImageHotkey === this.plugin.settings.moveTheImageHotkey) {
+      this.plugin.settings.switchTheImageHotkey = SWITCH_THE_IMAGE.DEFAULT_HOTKEY;
+    }
+    const switchTheImageSetting = new Setting(containerEl)
+      .setName(t("SWITCH_THE_IMAGE_NAME"))
+      .setDesc(t("SWITCH_THE_IMAGE_DESC"))
+      .addDropdown(async (dropdown) => {
+        dropdown.addOptions(this.getDropdownOptions());
+        dropdown.setValue(this.plugin.settings.switchTheImageHotkey);
+        dropdown.onChange(async (option) => {
+          this.plugin.settings.switchTheImageHotkey = option;
+          this.checkDropdownOptions(SWITCH_THE_IMAGE.CODE, moveTheImageSetting);
+          await this.plugin.saveSettings();
+        });
+      }).then((setting) => {
+        setting.controlEl.appendChild(createDiv('setting-editor-extra-setting-button hotkeys-settings-plus', (el) => {
+          el.innerHTML = "+";
+        }));
+        setting.controlEl.appendChild(createDiv('setting-editor-extra-setting-button', (el) => {
+          el.innerHTML = SWITCH_THE_IMAGE.SVG;
+        }));
+      });
+
+    if (switchTheImageSetting) {
+      this.checkDropdownOptions(MOVE_THE_IMAGE.CODE, switchTheImageSetting);
+    }
+    if (moveTheImageSetting) {
+      this.checkDropdownOptions(SWITCH_THE_IMAGE.CODE, moveTheImageSetting);
+    }
+
+    new Setting(containerEl)
+      .setName(t("DOUBLE_CLICK_TOOLBAR_NAME"))
+      .addDropdown(async (dropdown) => {
+        for (const conf of TOOLBAR_CONF) {
+          if (!conf.enableHotKey) continue;
+          // @ts-ignore
+          dropdown.addOption(conf.class, t(conf.title));
+        }
+        dropdown.setValue(this.plugin.settings.doubleClickToolbar);
+        dropdown.onChange(async (option) => {
+          this.plugin.settings.doubleClickToolbar = option;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName(t("VIEW_TRIGGER_HOTKEY_NAME"))
+      .setDesc(t("VIEW_TRIGGER_HOTKEY_DESC"))
+      .addDropdown(async (dropdown) => {
+        dropdown.addOptions(this.getDropdownOptions());
+        dropdown.setValue(this.plugin.settings.viewTriggerHotkey);
+        dropdown.onChange(async (option) => {
+          this.plugin.settings.viewTriggerHotkey = option;
+          await this.plugin.saveSettings();
+        });
+      });
+    //endregion
+  }
+
+  private displayCommonSettings(containerEl: HTMLElement) {
+    containerEl.createEl('h3', {text: t('COMMON_SETTINGS')});
+
+    new Setting(containerEl)
+      .setName(t("VIEW_MODE_NAME"))
+      .addDropdown(async (dropdown) => {
+        for (const key in ViewMode) {
+          // @ts-ignore
+          dropdown.addOption(key, t('VIEW_MODE_' + key.toUpperCase()));
+        }
+        dropdown.setValue(this.plugin.settings.viewMode);
+        dropdown.onChange(async (option: ViewMode) => {
+          await this.plugin.switchViewMode(option);
+        });
+      });
+  }
+
+  private displayViewTriggerSettings(containerEl: HTMLElement) {
+    containerEl.createEl('h3', {text: t("VIEW_TRIGGER_SETTINGS")});
+
+    new Setting(containerEl)
+      .setName(t("VIEW_IMAGE_IN_EDITOR_NAME"))
+      .setDesc(t("VIEW_IMAGE_IN_EDITOR_DESC"))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.viewImageInEditor)
+        .onChange(async (value) => {
+          this.plugin.settings.viewImageInEditor = value;
+          this.plugin.refreshViewTrigger();
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName(t("VIEW_IMAGE_IN_CPB_NAME"))
+      .setDesc(t("VIEW_IMAGE_IN_CPB_DESC"))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.viewImageInCPB)
+        .onChange(async (value) => {
+          this.plugin.settings.viewImageInCPB = value;
+          this.plugin.refreshViewTrigger();
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName(t("VIEW_IMAGE_WITH_A_LINK_NAME"))
+      .setDesc(t("VIEW_IMAGE_WITH_A_LINK_DESC"))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.viewImageWithLink)
+        .onChange(async (value) => {
+          this.plugin.settings.viewImageWithLink = value;
+          this.plugin.refreshViewTrigger();
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName(t("VIEW_IMAGE_OTHER_NAME"))
+      .setDesc(t("VIEW_IMAGE_OTHER_DESC"))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.viewImageOther)
+        .onChange(async (value) => {
+          this.plugin.settings.viewImageOther = value;
+          this.plugin.refreshViewTrigger();
+          await this.plugin.saveSettings();
+        }));
+  }
+
+  private displayPinModeSettings(containerEl: HTMLElement) {
+    //region >>> PIN_MODE_SETTINGS
+    let pinMaximumSetting: Setting,
+      pinCoverSetting: Setting;
+
+    containerEl.createEl('h3', {text: t("PIN_MODE_SETTINGS")});
+
+    /*new Setting(containerEl)
+      .setName(t("PIN_MODE_NAME"))
+      .setDesc(t("PIN_MODE_DESC"))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.pinMode)
+        .onChange(async (value) => {
+          this.plugin.settings.pinMode = value;
+          this.switchSettingsDisabled(!value, pinMaximumSetting, pinCoverSetting);
+          //this.plugin.togglePinMode(value);
+          await this.plugin.saveSettings();
+        }));*/
+
+    let pinMaximumScaleText: HTMLDivElement;
+    pinMaximumSetting = new Setting(containerEl)
+      .setName(t("PIN_MAXIMUM_NAME"))
+      .addSlider(slider => slider
+        .setLimits(1, 5, 1)
+        .setValue(this.plugin.settings.pinMaximum)
+        .onChange(async (value) => {
+          pinMaximumScaleText.innerText = " " + value.toString();
+          this.plugin.settings.pinMaximum = value;
+          // this.plugin.containerView?.setPinMaximum(value);
+          this.plugin.saveSettings();
+        }));
+    pinMaximumSetting.settingEl.createDiv('', (el) => {
+      pinMaximumScaleText = el;
+      el.style.minWidth = "2.3em";
+      el.style.textAlign = "right";
+      el.innerText = " " + this.plugin.settings.pinMaximum.toString();
+    });
+
+    pinCoverSetting = new Setting(containerEl)
+      .setName(t("PIN_COVER_NAME"))
+      .setDesc(t("PIN_COVER_DESC"))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.pinCoverMode)
+        .onChange(async (value) => {
+          this.plugin.settings.pinCoverMode = value;
+          await this.plugin.saveSettings();
+        }));
+
+    //this.switchSettingsDisabled(!this.plugin.settings.pinMode, pinMaximumSetting, pinCoverSetting);
+    //endregion
+  }
+
+
+  switchSettingsDisabled(disabled: boolean, ...settings: Setting[]) {
+    for (const setting of settings) {
+      setting?.setDisabled(disabled)
+    }
+  }
+
+  createPickrSetting(containerEl: HTMLElement, name: string, defaultColor: string): Setting {
+    let pickrDefault: string;
+    if ('GALLERY_NAVBAR_DEFAULT_COLOR_NAME' === name) {
+      pickrDefault = this.plugin.settings.galleryNavbarDefaultColor;
+    } else if ('GALLERY_NAVBAR_HOVER_COLOR_NAME' === name) {
+      pickrDefault = this.plugin.settings.galleryNavbarHoverColor;
+    } else if ('GALLERY_IMG_BORDER_ACTIVE_COLOR_NAME' === name) {
+      pickrDefault = this.plugin.settings.galleryImgBorderActiveColor;
+    } else if ('IMG_VIEW_BACKGROUND_COLOR_NAME' === name) {
+      pickrDefault = this.plugin.settings.imgViewBackgroundColor;
+    } else {
+      pickrDefault = defaultColor;
+    }
+
+    let pickr: Pickr;
+    return new Setting(containerEl)
+      // @ts-ignore
+      .setName(t(name))
+      .then((setting) => {
+        pickr = Pickr.create({
+          el: setting.controlEl.createDiv({cls: "picker"}),
+          theme: 'nano',
+          position: "left-middle",
+          lockOpacity: false, // If true, the user won't be able to adjust any opacity.
+          default: pickrDefault, // Default color
+          swatches: [], // Optional color swatches
+          components: {
+            preview: true,
+            hue: true,
+            opacity: true,
+            interaction: {
+              hex: true,
+              rgba: true,
+              hsla: false,
+              input: true,
+              cancel: true,
+              save: true,
+            },
+          }
+        })
+          .on('show', (color: Pickr.HSVaColor, instance: Pickr) => { // Pickr got opened
+            if (!this.plugin.settings.galleryNavbarToggle) pickr?.hide();
+            const {result} = (pickr.getRoot() as any).interaction;
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() => result.select())
+            );
+          })
+          .on('save', (color: Pickr.HSVaColor, instance: Pickr) => { // User clicked the save / clear button
+            if (!color) return;
+            instance.hide();
+            const savedColor = color.toHEXA().toString();
+            instance.addSwatch(savedColor);
+            this.setAndSavePickrSetting(name, savedColor);
+          })
+          .on('cancel', (instance: Pickr) => { // User clicked the cancel button
+            instance.hide();
+          })
+      })
+      .addExtraButton((btn) => {
+        btn.setIcon("reset")
+          .onClick(() => {
+            pickr.setColor(defaultColor);
+            this.setAndSavePickrSetting(name, defaultColor);
+          })
+          .setTooltip('restore default color');
+      });
+  }
+
+  setAndSavePickrSetting(name: string, savedColor: string): void {
+    if ('GALLERY_NAVBAR_DEFAULT_COLOR_NAME' === name) {
+      this.plugin.settings.galleryNavbarDefaultColor = savedColor;
+    } else if ('GALLERY_NAVBAR_HOVER_COLOR_NAME' === name) {
+      this.plugin.settings.galleryNavbarHoverColor = savedColor;
+    } else if ('GALLERY_IMG_BORDER_ACTIVE_COLOR_NAME' === name) {
+      this.plugin.settings.galleryImgBorderActiveColor = savedColor;
+    } else if ('IMG_VIEW_BACKGROUND_COLOR_NAME' === name) {
+      this.plugin.settings.imgViewBackgroundColor = savedColor;
+      // this.plugin.containerView?.setImgViewDefaultBackgroundForImgList();
+      this.plugin.getAllContainerViews().forEach(container => {
+        container.setImgViewDefaultBackgroundForImgList();
+      });
+    }
+    this.plugin.saveSettings();
+  }
+
+  getDropdownOptions(): Record<string, string> {
+    let options: Record<string, string> = {};
+    for (const key in MODIFIER_HOTKEYS) {
+      //@ts-ignore
+      options[key] = t(key);
+    }
+    return options;
+  }
+
+  checkDropdownOptions(code: string, setting: Setting): void {
+    if (!setting || !setting.controlEl) return;
+    const optionElList: HTMLCollectionOf<HTMLOptionElement> = setting.controlEl.getElementsByClassName('dropdown')[0].getElementsByTagName('option');
+    for (let i = 0, size = optionElList.length; i < size; i++) {
+      if (code === MOVE_THE_IMAGE.CODE) {
+        optionElList[i].disabled = optionElList[i].value === this.plugin.settings.moveTheImageHotkey;
+      } else if (code === SWITCH_THE_IMAGE.CODE) {
+        optionElList[i].disabled = optionElList[i].value === this.plugin.settings.switchTheImageHotkey;
+      }
+    }
+  }
+
+}
+
