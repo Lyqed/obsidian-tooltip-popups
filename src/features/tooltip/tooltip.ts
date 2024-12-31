@@ -14,6 +14,8 @@ export class TooltipManager {
     private tooltipStartX = 0;
     private tooltipStartY = 0;
     private isPositionLocked = false;
+    private initialWidth = 0;
+    private initialHeight = 0;
 
     constructor(maxWidth: number, maxHeight: number) {
         this.maxWidth = maxWidth;
@@ -124,14 +126,35 @@ export class TooltipManager {
         const img = document.createElement('img');
         img.style.maxWidth = `${this.maxWidth}px`;
         img.style.maxHeight = `${this.maxHeight}px`;
-        img.style.transform = `scale(${this.currentScale})`;
-        img.style.transformOrigin = 'top left';
         img.style.transition = 'transform 0.1s ease-out';
+        img.style.transformOrigin = 'top left';
         img.style.pointerEvents = 'none'; // Prevent image from interfering with drag
 
         // Get direct image link
         const directImageLink = this.getDirectImageLink(imgLink);
         img.src = directImageLink;
+
+        // Set initial dimensions once image loads
+        img.onload = () => {
+            const aspectRatio = img.naturalWidth / img.naturalHeight;
+            let width = img.naturalWidth;
+            let height = img.naturalHeight;
+
+            // Scale down if needed while maintaining aspect ratio
+            if (width > this.maxWidth) {
+                width = this.maxWidth;
+                height = width / aspectRatio;
+            }
+            if (height > this.maxHeight) {
+                height = this.maxHeight;
+                width = height * aspectRatio;
+            }
+
+            img.style.width = `${width}px`;
+            img.style.height = `${height}px`;
+            this.initialWidth = width;
+            this.initialHeight = height;
+        };
 
         this.tooltipElement.appendChild(img);
         this.positionTooltip(coords.x, coords.y);
@@ -214,7 +237,17 @@ export class TooltipManager {
             this.currentScale = newScale;
             const img = this.tooltipElement.querySelector('img');
             if (img) {
-                img.style.transform = `scale(${this.currentScale})`;
+                // Apply transform scale for smooth proportional scaling
+                img.style.transform = `scale(${newScale})`;
+                
+                // Update container size to match scaled image
+                const scaledWidth = this.initialWidth * newScale;
+                const scaledHeight = this.initialHeight * newScale;
+                const container = img.parentElement;
+                if (container) {
+                    container.style.width = `${scaledWidth}px`;
+                    container.style.height = `${scaledHeight}px`;
+                }
             }
         }
     }
